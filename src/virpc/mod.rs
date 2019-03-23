@@ -105,12 +105,6 @@ impl Virpc {
                 //self.cpu.borrow_mut().set_nmi(true);
             }
 
-            // process special keys: console ASM output and reset switch
-            if self.main_window.is_key_pressed(Key::F11, KeyRepeat::No) {
-                let di = self.cpu.borrow_mut().debug_instr;
-                self.cpu.borrow_mut().debug_instr = !di;
-            }
-
             if self.main_window.is_key_pressed(Key::F12, KeyRepeat::No) {
                 self.reset();
             }

@@ -58,9 +58,7 @@ pub struct CPU {
     pub first_irq_cycle: u32,
     pub state: CPUState,
     pub nmi: bool,
-    pub debug_instr: bool,
     pub prev_pc: u32, // previous program counter - used for debugging
-    pub op_debugger: utils::OpDebugger,
     dfff_byte: u8
 }
 
@@ -80,9 +78,7 @@ impl CPU {
             state: CPUState::FetchOp,
             instruction: opcodes::Instruction::new(),
             nmi: false,
-            debug_instr: false,
             prev_pc: 0,
-            op_debugger: utils::OpDebugger::new(),
             dfff_byte: 0x55
         }))
     }
@@ -153,7 +149,6 @@ impl CPU {
                         self.instruction.size = size;
                         self.instruction.args = arguments;
                         self.instruction.addressing_type = addr_type;
-                        if self.debug_instr { utils::debug_instruction(next_op, self); }
                     }
                     None => panic!("Can't fetch instruction")
                 }

@@ -184,4 +184,62 @@ impl Debugger {
     fn assembler(&mut self, memory: &mut virpc::memory::MemShared) {
         memory.borrow_mut().write_byte(0,0);
     }
+    // output current instruction and CPU register status in a neat, readable fashion
+    pub fn debug_instruction(opcode: u8, cpu: &mut virpc::cpu::CPUShared) {
+        cpu.borrow_mut().prev_pc = cpu.borrow_mut().pc;
+        let prev_pc = cpu.borrow_mut().prev_pc;
+        
+        let operand_hex: String;
+        let operand: String;
+
+        // instruction opcode and arglist formatting based on addressing mode
+        match cpu.borrow_mut().instruction.size {
+            2 => {
+                match cpu.borrow_mut().instruction.addressing_type { 
+                    virpc::opcodes::ArgumentSize::Byte => {
+                        operand = format!("#${:02X}   ", cpu.borrow_mut().read_byte(prev_pc));
+                        operand_hex = format!(" {:02X}    ", cpu.borrow_mut().read_byte(prev_pc));
+                    }
+                    virpc::opcodes::ArgumentSize::Int =>  {
+                        operand_hex = format!(" {:02X} {:02X} {:02X} {:02X} ", cpu.borrow_mut().read_byte(prev_pc), 
+                            cpu.borrow_mut().read_byte(prev_pc + 0x01), 
+                            cpu.borrow_mut().read_byte(prev_pc + 0x02), 
+                            cpu.borrow_mut().read_byte(prev_pc + 0x03));
+                        operand = format!("${:08X}  ", cpu.borrow_mut().read_int_le(prev_pc));
+                    }
+                }
+            }
+            3 => {
+                match cpu.borrow_mut().instruction.addressing_type { 
+                    virpc::opcodes::ArgumentSize::Byte => {
+                        operand = format!("#${:02X}   ", cpu.borrow_mut().read_byte(prev_pc));
+                        operand_hex = format!(" {:02X}    ", cpu.borrow_mut().read_byte(prev_pc));
+                    }
+                    virpc::opcodes::ArgumentSize::Int =>  {
+                        operand_hex = format!(" {:02X} {:02X} {:02X} {:02X} ", 
+                            cpu.borrow_mut().read_byte(prev_pc), 
+                            cpu.borrow_mut().read_byte(prev_pc + 0x01), 
+                            cpu.borrow_mut().read_byte(prev_pc + 0x02), 
+                            cpu.borrow_mut().read_byte(prev_pc + 0x03));
+                        operand = format!("${:08X}  ", cpu.borrow_mut().read_int_le(prev_pc));
+                    }
+                }
+            }
+            _ => {
+                operand_hex = format!("       ");
+                operand = format!("       ");            
+            }
+        }
+
+
+        println!("${:04X}: {:02X}{}{}{} <- NV-BDIZC: [{:08b}]", 
+            cpu.borrow_mut().prev_pc - 1, 
+            opcode, 
+            operand_hex, 
+            cpu.borrow_mut().instruction, 
+            operand,
+            cpu.borrow_mut().p);
+
+
+    }
 }
