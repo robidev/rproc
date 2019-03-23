@@ -1,13 +1,12 @@
-  
+#![allow(unused_imports)]
 #![allow(dead_code)]
-#[allow(unused_imports)]
-#[allow(snake_case)]
 extern crate minifb;
 extern crate byteorder;
 extern crate num;
 extern crate ncurses;
+extern crate time;
 
-#[macro_use]
+//#[macro_use]
 extern crate enum_primitive;
 
 #[macro_use]
@@ -25,7 +24,7 @@ static COLOR_KEYWORD: i16 = 18;
 static COLOR_PAIR_DEFAULT: i16 = 1;
 static COLOR_PAIR_KEYWORD: i16 = 2;
 
-pub struct windows {
+pub struct Windows {
     items1 : Vec<ITEM>,
     items2 : Vec<ITEM>,
     items3 : Vec<ITEM>,
@@ -46,8 +45,8 @@ pub struct windows {
     py : i32,
 }
 
-impl windows {
-    pub fn new() -> windows {
+impl Windows {
+    pub fn new() -> Windows {
         let mut screen_height = 0;
         let mut screen_width = 0;
 
@@ -72,27 +71,28 @@ impl windows {
         litems3.push(new_item(" label_0xffff", ""));
         litems3.push(new_item(" lib_printf(a)", ""));
 
+        refresh();//needed for screen size
         getmaxyx(stdscr(), &mut screen_height, &mut screen_width);
-        let mut lwin1 = windows::create_win("<commands>",screen_height/2, screen_width/2, 0, 0);
-        let mut lwin2 = windows::create_win(" code ",screen_height/2, screen_width/2, 0, screen_width/2);
-        let mut lwin3 = windows::create_win(" variables ",screen_height/2, screen_width/2, screen_height/2, 0);
-        let mut lwin4 = windows::create_win(" labels ",screen_height/2, screen_width/2, screen_height/2, screen_width/2);
+        let lwin1 = Windows::create_win("<commands>",screen_height/2, 20, 0, 0);
+        let lwin2 = Windows::create_win(" code ",screen_height/2, screen_width-20, 0, 20);
+        let lwin3 = Windows::create_win(" variables ",screen_height/2, screen_width/2, screen_height/2, 0);
+        let lwin4 = Windows::create_win(" labels ",screen_height/2, screen_width/2, screen_height/2, screen_width/2);
 
-        let mut lmenu1 = windows::create_menu(&mut litems1,lwin1);
-        let mut lmenu2 = windows::create_menu(&mut litems2,lwin3);
-        let mut lmenu3 = windows::create_menu(&mut litems3,lwin4);
+        let lmenu1 = Windows::create_menu(&mut litems1,lwin1);
+        let lmenu2 = Windows::create_menu(&mut litems2,lwin3);
+        let lmenu3 = Windows::create_menu(&mut litems3,lwin4);
         //unpost_menu(lmenu1); TODO: check if this is leaky
         set_menu_mark(lmenu1, ">");
         post_menu(lmenu1);
         wrefresh(lwin1);
-        let mut _windows = windows {
+        let mut _windows = Windows {
             menu1 : lmenu1,
             menu2 : lmenu2,
             menu3 : lmenu3,
             items1 : litems1,
             items2 : litems2,
             items3 : litems3,
-            pad : newpad(100,100),
+            pad : newpad(1000,1000),
             win1 : lwin1,
             win2 : lwin2,
             win3 : lwin3,
@@ -109,10 +109,10 @@ impl windows {
         for i in 1..10000 {
             pechochar(_windows.pad, (0x20 + i) as u64);
         }
-        prefresh(_windows.pad,0,0,1,screen_width/2+1,screen_height/2-2,screen_width-3);
+        prefresh(_windows.pad,0,0,1,20+1,screen_height/2-2,screen_width-3);
         _windows
     }
-    pub fn resize_check(&mut self,x:i32,y:i32) {
+    pub fn resize_check(&mut self) {
         getmaxyx(stdscr(), &mut self.screen_height_n, &mut self.screen_width_n);
         if self.screen_height != self.screen_height_n || self.screen_width != self.screen_width_n {
             self.screen_height = self.screen_height_n;
@@ -121,13 +121,13 @@ impl windows {
             wborder(self.win1, ch, ch, ch, ch, ch, ch, ch, ch);
             wrefresh(self.win1);
             mvwin(self.win1, 0,0);
-            wresize(self.win1,self.screen_height/2, self.screen_width/2);
+            wresize(self.win1,self.screen_height/2, 20);
             box_(self.win1,0,0);
             
             wborder(self.win2, ch, ch, ch, ch, ch, ch, ch, ch);
             wrefresh(self.win2);
-            mvwin(self.win2, 0,self.screen_width/2);
-            wresize(self.win2,self.screen_height/2, self.screen_width/2);
+            mvwin(self.win2, 0,20);
+            wresize(self.win2,self.screen_height/2, self.screen_width-20);
             box_(self.win2,0,0);
             
             wborder(self.win3, ch, ch, ch, ch, ch, ch, ch, ch);
@@ -141,30 +141,16 @@ impl windows {
             mvwin(self.win4, self.screen_height/2,self.screen_width/2);
             wresize(self.win4,self.screen_height/2, self.screen_width/2);
             box_(self.win4,0,0);
-            
-            self.px = x;
-            self.py = y;
 
             self.update();
         }
     }
-    
-    pub fn focus(&mut self, focus : i32) {
-        self.focus = focus;
-        self.update();
-    }
-
-    pub fn scrollpad(&mut self, x : i32, y : i32) {
-        self.px = x;
-        self.py = y;
-        self.update();
-    }
 
     pub fn destroy(&mut self)
     {
-        windows::delete_menu(self.menu1,&mut self.items1);
-        windows::delete_menu(self.menu2,&mut self.items2);
-        windows::delete_menu(self.menu3,&mut self.items3);
+        Windows::delete_menu(self.menu1,&mut self.items1);
+        Windows::delete_menu(self.menu2,&mut self.items2);
+        Windows::delete_menu(self.menu3,&mut self.items3);
         clear();
         endwin();
     }
@@ -217,7 +203,7 @@ impl windows {
         wrefresh(self.win2);
         wrefresh(self.win3);
         wrefresh(self.win4);
-        prefresh(self.pad,self.py,self.px,1,self.screen_width/2+1,self.screen_height/2-2,self.screen_width-3);
+        prefresh(self.pad,self.py,self.px,1,20+1,self.screen_height/2-2,self.screen_width-3);
     }
 
     fn create_menu(items : &mut Vec<ITEM>, win : WINDOW) -> MENU {
@@ -250,10 +236,96 @@ impl windows {
 
         free_menu(my_menu);
     }
+
+    fn handle_keys(&mut self, ch : i32) {
+        match ch {
+            0x09 => {
+                self.focus += 1;
+                if self.focus > 3 {
+                    self.focus = 0;
+                }
+                self.update();
+            }
+            _ => {
+                match self.focus {
+                    0 => self.handle_keys_win1(ch),
+                    1 => self.handle_keys_win2(ch),
+                    2 => self.handle_keys_win3(ch),
+                    3 => self.handle_keys_win4(ch),
+                    _ => {},
+                };
+            }
+        }
+    }
+
+    fn handle_keys_win1(&mut self, ch : i32) {
+        match ch {
+            KEY_UP => {
+                menu_driver(self.menu1, REQ_UP_ITEM);
+                wrefresh(self.win1);
+            }
+            KEY_DOWN => {
+                menu_driver(self.menu1, REQ_DOWN_ITEM);
+                wrefresh(self.win1);
+            }
+            _ => {}
+        }
+    }
+
+    fn handle_keys_win2(&mut self, ch : i32) {
+        match ch {
+            KEY_LEFT => {
+                self.px -= 1;
+                self.update();
+            }
+            KEY_RIGHT => {
+                self.px += 1;
+                self.update();
+            }
+            KEY_UP => {
+                self.py -= 1;
+                self.update();
+            }
+            KEY_DOWN => {
+                self.py += 1;
+                self.update();
+            }
+            _ => {}
+        }
+    }
+
+    fn handle_keys_win3(&mut self, ch : i32) {
+        match ch {
+            KEY_UP => {
+                menu_driver(self.menu2, REQ_UP_ITEM);
+                wrefresh(self.win3);
+            }
+            KEY_DOWN => {
+                menu_driver(self.menu2, REQ_DOWN_ITEM);
+                wrefresh(self.win3);
+            }
+            _ => {}
+        }
+    }
+
+    fn handle_keys_win4(&mut self, ch : i32) {
+        match ch {
+            KEY_UP => {
+                self.items3.push(new_item(" lib_printf(a)", ""));
+                menu_driver(self.menu3, REQ_UP_ITEM);
+                wrefresh(self.win4);
+            }
+            KEY_DOWN => {
+                menu_driver(self.menu3, REQ_DOWN_ITEM);
+                wrefresh(self.win4);
+            }
+            _ => {}
+        }
+    }
 }
 
 fn main() {
-    let args: Vec<String> = env::args().collect();
+    /*let args: Vec<String> = env::args().collect();
 
     let mut prg_to_load  = String::new();
     let mut debugger_on  = true;//false;
@@ -277,68 +349,31 @@ fn main() {
         prg_to_load = "test.prg".to_string();
     }
 
-    //let mut virpc = virpc::Virpc::new(window_scale, debugger_on, &prg_to_load);
-    //virpc.reset();
+    let mut virpc = virpc::Virpc::new(window_scale, debugger_on, &prg_to_load);
+    virpc.reset();
 
     // main update loop
-    //while virpc.main_window.is_open() {
-    //    virpc.run();
-    //}
+    while virpc.main_window.is_open() {
+        virpc.run();
+    }*/
 
     initscr();
     keypad(stdscr(), true);
     noecho();
     curs_set(CURSOR_VISIBILITY::CURSOR_INVISIBLE);
-
     start_color();
     init_color(COLOR_BACKGROUND, 0, 43 * 4, 54 * 4);
     init_color(COLOR_FOREGROUND, 142 * 4, 161 * 4, 161 * 4);
     init_pair(COLOR_PAIR_DEFAULT, COLOR_FOREGROUND, COLOR_BACKGROUND);
     init_pair(COLOR_PAIR_KEYWORD, COLOR_KEYWORD, COLOR_BACKGROUND);
-    /* Set the window's background color. */
-    //bkgd(' ' as chtype | COLOR_PAIR(COLOR_PAIR_DEFAULT) as chtype);
-    refresh();
-    let mut _windows : windows = windows::new();
-    refresh();
 
-    let mut x = 0;
-    let mut y = 0;
+    let mut _windows : Windows = Windows::new();
     let mut ch = getch();
-    let mut focus = 0;
-    while ch != 27 as i32 { // ESC pressed
-
-        match ch {
-            KEY_UP => {
-                //mvwprintw(_windows.win1, 1,1,"test");
-                menu_driver(_windows.menu1, REQ_UP_ITEM);
-                wrefresh(_windows.win1);
-            }
-            KEY_DOWN => {
-                //mvwprintw(_windows.win1, 1,1,"test");
-                menu_driver(_windows.menu1, REQ_DOWN_ITEM);
-                wrefresh(_windows.win1);
-            }
-            KEY_LEFT => {
-                x -= 1;
-                _windows.scrollpad(x,y);
-            }
-            KEY_RIGHT => {
-                x += 1;
-                _windows.scrollpad(x,y);
-            }
-            KEY_TAB => {
-                focus += 1;
-                if focus > 3 {
-                    focus = 0;
-                }
-                _windows.focus(focus);
-            }
-            _ => {
-
-            }
-        }
-        _windows.resize_check(0,0);
+    while ch != 27 as i32 { // ESC pressed, so quit
+        _windows.handle_keys(ch);
+        _windows.resize_check();
         ch = getch();
+        std::thread::sleep(std::time::Duration::from_millis(50));
     }
     _windows.destroy();
 }

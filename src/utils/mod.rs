@@ -1,7 +1,7 @@
 // helper utility functions and macros
 use crate::virpc;
 use crate::virpc::cpu;
-use crate::virpc::opcodes;
+//use crate::virpc::opcodes;
 
 use std::error::Error;
 use std::io::prelude::*;

@@ -226,11 +226,9 @@ impl CPU {
 
 
     pub fn write_byte(&mut self, addr: u32, value: u8) -> bool {
-        let mut on_write = Callback::None;
-        let mut mem_write_ok = true;
+        let on_write = Callback::None;
 
-        mem_write_ok = as_mut!(self.mem_ref).write_byte(addr, value);
-
+        as_mut!(self.mem_ref).write_byte(addr, value);
         // on VIC/CIA register write perform necessary action on the CPU
         match on_write {
             Callback::TriggerVICIrq => self.set_vic_irq(true),
@@ -242,13 +240,13 @@ impl CPU {
             _ => (),
         }
 
-        mem_write_ok
+        true
     }
     
 
     pub fn read_byte(&mut self, addr: u32) -> u8 {
         let byte: u8;
-        let mut on_read = Callback::None;
+        let on_read = Callback::None;
 
         byte = as_mut!(self.mem_ref).read_byte(addr);
 

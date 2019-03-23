@@ -1,7 +1,7 @@
 // memory banks
 use std::cell::RefCell;
 use std::rc::Rc;
-use crate::utils;
+//use crate::utils;
 
 pub type MemShared = Rc<RefCell<Memory>>;
 
@@ -57,7 +57,7 @@ impl MemBank {
     pub fn write(&mut self, addr: u32, val: u8) {
         match self.bank_type {
             MemType::Ram => self.data[(addr - self.offset) as usize] = val,
-            _ => panic!("Can't write to ROM!")
+            //_ => panic!("Can't write to ROM!")
         }
     }
 
@@ -103,7 +103,7 @@ impl Memory {
         match bank_type {
             MemType::Ram => &mut self.ram,
             //MemType::Io  => &mut self.io,
-            _            => panic!("Unrecognized RAM bank"),
+            //_            => panic!("Unrecognized RAM bank"),
         }
     }   
     
