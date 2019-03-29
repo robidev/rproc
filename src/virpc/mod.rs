@@ -21,7 +21,7 @@ const CLOCK_FREQ: f64 = 50.0;
 pub struct Virpc {
     pub main_window: minifb::Window,
     pub program_to_load: String,
-    memory: memory::MemShared,
+    pub memory: memory::MemShared,
     clock:  clock::Clock,
     cpu:  cpu::CPUShared,
     video: video::VideoShared,
@@ -87,7 +87,7 @@ impl Virpc {
 
         // main virpc update - use the clock to time all the operations
         if self.clock.tick() {
-            self.cpu.borrow_mut().update(self.cycle_count);
+            self.cpu.borrow_mut().update();
             self.video.borrow_mut().update(self.cycle_count);
 
             // update the debugger window if it exists

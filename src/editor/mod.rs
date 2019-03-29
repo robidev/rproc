@@ -54,7 +54,7 @@ impl Windows {
         let lwin2 = Windows::create_win(" code ",screen_height/2, screen_width-20, 0, 20);
         let lwin3 = Windows::create_win(" variables ",screen_height/2, screen_width/2, screen_height/2, 0);
         let lwin4 = Windows::create_win(" labels ",screen_height/2, screen_width/2, screen_height/2, screen_width/2);
-
+        refresh();//needed for win size
         let lmenu1 = Windows::create_menu(&mut litems1,lwin1);
         let lmenu2 = Windows::create_menu(&mut litems2,lwin3);
         let lmenu3 = Windows::create_menu(&mut litems3,lwin4);
@@ -82,10 +82,7 @@ impl Windows {
             px : 0,
             py : 0,
         };
-        //_windows.win2 = subpad(_windows.pad,screen_height/2, screen_width/2, 0, 0);
-        for i in 1..10000 {
-            pechochar(_windows.pad, (0x20 + i) as u64);
-        }
+
         prefresh(_windows.pad,0,0,1,20+1,screen_height/2-2,screen_width-3);
         _windows
     }
@@ -130,6 +127,11 @@ impl Windows {
         Windows::delete_menu(self.menu3,&mut self.items3);
         clear();
         endwin();
+    }
+
+    pub fn wprintw_pad(&mut self, s : &str) {
+        wprintw(self.pad, s);
+        prefresh(self.pad,self.py,self.px,1,20+1,self.screen_height/2-2,self.screen_width-3);
     }
 
     fn destroy_win(win: WINDOW) {
@@ -181,17 +183,27 @@ impl Windows {
         wrefresh(self.win3);
         wrefresh(self.win4);
         prefresh(self.pad,self.py,self.px,1,20+1,self.screen_height/2-2,self.screen_width-3);
+
+        Windows::update_menu(self.menu1, &mut self.items2);
+
     }
 
     fn create_menu(items : &mut Vec<ITEM>, win : WINDOW) -> MENU {
-                /* Crate menu */
+        let mut x = 0;
+        let mut y = 0;
+        getmaxyx(win,&mut y,&mut x);
+        y -= 1;
+        x -= 1;
+        //let s = format!("TEST:{},{}",x,y);
+        //wprintw(win,s.as_str());
+        /* Create menu */
         let my_menu = new_menu(items);
         menu_opts_off(my_menu, O_SHOWDESC);
         //menu_opts_off(my_menu, O_ONEVALUE);
         /* Set main window and sub window */
         set_menu_win(my_menu, win);
-        set_menu_sub(my_menu, derwin(win, 7, 0, 1, 1));
-        set_menu_format(my_menu, 7, 1);
+        set_menu_sub(my_menu, derwin(win,y,0, 1, 1));
+        set_menu_format(my_menu,y-1, 1);
 
         /* Set menu mark to the string " * " */
         set_menu_mark(my_menu, " ");
@@ -200,6 +212,23 @@ impl Windows {
         post_menu(my_menu);
         wrefresh(win);
         my_menu
+    }
+
+    fn update_menu(menu: MENU, items : &mut Vec<ITEM>) {
+                /* Crate menu */
+        unpost_menu(menu);
+
+        let mut x = 0;
+        let mut y = 0;
+        getmaxyx(menu_win(menu),&mut y,&mut x);
+        y -= 1;
+        x -= 1;
+        set_menu_items(menu, items);
+        set_menu_format(menu, y-1, 1);
+        wresize(menu_sub(menu),y-1, x-1);
+        /* Post the menu */
+        post_menu(menu);
+        wrefresh(menu_win(menu));
     }
 
     fn delete_menu(my_menu : MENU, items : &mut Vec<ITEM>)

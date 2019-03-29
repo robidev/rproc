@@ -15,6 +15,9 @@ mod virpc;
 mod debugger;
 mod editor;
 
+use virpc::cpu;
+use virpc::memory;
+
 use minifb::*;
 use std::env;
 use ncurses::*;
@@ -27,10 +30,10 @@ static COLOR_PAIR_DEFAULT: i16 = 1;
 static COLOR_PAIR_KEYWORD: i16 = 2;
 
 fn main() {
-    /*let args: Vec<String> = env::args().collect();
+    let args: Vec<String> = env::args().collect();
 
     let mut prg_to_load  = String::new();
-    let mut debugger_on  = true;//false;
+    let mut debugger_on  = false;
     let mut window_scale = Scale::X2;
 
 
@@ -53,7 +56,9 @@ fn main() {
 
     let mut virpc = virpc::Virpc::new(window_scale, debugger_on, &prg_to_load);
     virpc.reset();
-
+    let asmcpu = cpu::CPU::new_shared();
+    asmcpu.borrow_mut().set_references(virpc.memory);
+/*
     // main update loop
     while virpc.main_window.is_open() {
         virpc.run();
@@ -70,6 +75,13 @@ fn main() {
     init_pair(COLOR_PAIR_KEYWORD, COLOR_KEYWORD, COLOR_BACKGROUND);
 
     let mut _windows : Windows = Windows::new();
+
+    let mut pc = 0;
+    for _i in 0..4 {
+        pc = asmcpu.borrow_mut().disassemble(pc);
+        _windows.wprintw_pad(asmcpu.borrow_mut().instruction_to_text().as_str());
+    }
+
     let mut ch = getch();
     while ch != 27 as i32 { // ESC pressed, so quit
         _windows.handle_keys(ch);
@@ -78,4 +90,5 @@ fn main() {
         std::thread::sleep(std::time::Duration::from_millis(50));
     }
     _windows.destroy();
+    asmcpu.borrow_mut().text_to_instruction("    hello world [test]; aaa    ");
 }

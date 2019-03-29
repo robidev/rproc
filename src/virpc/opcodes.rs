@@ -395,3 +395,48 @@ pub fn get_instruction(opcode: u8) -> Option<(Op, u8, u8, ArgumentSize)> {
                          _ => return None
     })
 }
+
+pub fn get_opcode(cpu: &mut cpu::CPU) -> u8 {
+    let mut op_val = match cpu.instruction.opcode {
+            Op::JMP => 0x00,
+            Op::CLL => 0x10,
+            Op::ADD => 0x20, 
+            Op::SUB => 0x30,
+            Op::BSL => 0x40, 
+            Op::BSR => 0x50,
+            Op::RR => 0x60, 
+            Op::RL => 0x70, 
+            Op::AND => 0x80, 
+            Op::OR => 0x90, 
+            Op::XOR => 0xA0,   
+            Op::MUL => 0xB0,                       
+            Op::LDR => 0xC0, 
+            Op::STR => 0xD0,
+            Op::NOT => 0xE0,
+            Op::CMP => 0xF0,
+        };
+        match cpu.instruction.addressing_type {
+            ArgumentSize::Int => { op_val |= 0x08 },
+            _ => {}
+        }
+        op_val |= cpu.instruction.args & 0x07;
+        op_val
+}
+
+
+pub fn push_operand_addr(cpu: &mut cpu::CPU) -> bool {
+    for arg_i in 0..cpu.instruction.size {
+        match cpu.instruction.addressing_type {
+            ArgumentSize::Int => { cpu.write_int_le(cpu.pc,cpu.instruction.arg[arg_i as usize] ); cpu.pc += 4; },
+            ArgumentSize::Byte => { cpu.write_byte(cpu.pc,cpu.instruction.arg[arg_i as usize] as u8); cpu.pc += 1; },//TODO, is this a value(byte), or an address?(int)
+        }
+    }
+    true
+}
+
+pub fn pull_operand_addr(cpu: &mut cpu::CPU) -> bool {
+    for arg_i in 0..cpu.instruction.size {
+        cpu.instruction.arg[arg_i as usize] = cpu.next_int();
+    }
+    true
+}
