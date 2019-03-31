@@ -6,6 +6,8 @@ use std::rc::Rc;
 use crate::utils;
 use std::fmt;
 
+use opcodes::ArgumentSize;
+
 pub type CPUShared = Rc<RefCell<CPU>>;
 
 pub const RESET_VECTOR: u32 = 0x0000FFFC;
@@ -35,6 +37,7 @@ pub struct CPU {
     pub mem_ref:  Option<memory::MemShared>, // reference to shared system memory
 
     pub instruction: opcodes::Instruction,
+    pub instruction_u8 : u8,
     pub state: CPUState,
     pub prev_pc: u32,
 }
@@ -45,6 +48,7 @@ impl CPU {
             pc: 0,
             p:  0,
             mem_ref:  None,
+            instruction_u8 : 0,
             state: CPUState::FetchOp,
             instruction: opcodes::Instruction::new(),
             prev_pc: 0,
@@ -158,6 +162,7 @@ impl CPU {
         self.pc = address; //retrieve next byte
         self.prev_pc = self.pc;
         let next_op = self.next_byte();
+        self.instruction_u8 = next_op;
         match opcodes::get_instruction(next_op) { //retrieve instruction
             Some((opcode, size, arguments, addr_type)) => {
                 self.instruction.opcode = opcode;
@@ -167,8 +172,14 @@ impl CPU {
             }
             None => panic!("Can't fetch instruction")
         }
-        opcodes::fetch_operand_addr(self);
+        opcodes::pull_operand_addr(self);
         //self.pc = self.pc + 1;
+
+        // try to follow all code paths
+        //if addr is referenced in instruction, then mark it as a value (int/byte)
+        //  if byte = printable char, and more then 2 bytes in a row, then display then as chars/string
+        //if instruction is a jump, and addr > pc, then set pc to the jump
+        //if instruction is a conditional jump, and addr > pc, then add jump to list of jumps to follow
         self.pc
     }
 
@@ -176,6 +187,7 @@ impl CPU {
         //take an instruction object, and return the related opcode (and argument bytes), and commit to memory
         //self.instruction.opcode | self.instruction.addr_type | self.instruction.args
         let op = opcodes::get_opcode(self);
+        self.instruction_u8 = op;
         self.write_byte(self.pc,op);
         self.pc += 1;
         //self.instruction.arg[](size)
@@ -223,20 +235,53 @@ impl CPU {
     }
 
     pub fn instruction_to_text(&mut self) -> std::string::String {
-        //address/line
-        //labels
-        let s = format!("${:04X}: {}, {} {} {}\n", 
-            self.prev_pc, 
-            self.instruction, 
-            self.instruction.arg[0],//TODO : should these be values or addresses?
-            self.instruction.arg[1],
-            self.instruction.arg[2]);
-            s
-        //comments
-        //possible debug-data containing per memory-address comments and labels
+        let mut s;
+        match self.instruction.addressing_type {
+            ArgumentSize::Int => {
+                s = format!("${:04X}: i{},", self.prev_pc, self.instruction);
+                for i in 0..(self.instruction.size as usize) {
+                    if (self.instruction.args << i) & 0x04 > 0 {
+                        s = format!("{} [{}]",s,self.instruction.arg[i]);
+                    }
+                    else {
+                        s = format!("{} {}",s,self.instruction.arg[i]);
+                    }
+                }
+                s = format!("{}\t",s);
+                s = format!("{} {:02X}",s,self.instruction_u8);
+                for i in 0..(self.instruction.size as usize) {
+                    s = format!("{} {:02X}{:02X}{:02X}{:02X}",s,
+                        (self.instruction.arg[i]>>24)&0xff,
+                        (self.instruction.arg[i]>>16)&0xff,
+                        (self.instruction.arg[i]>>8)&0xff,
+                        (self.instruction.arg[i])&0xff);
+                }  
+            }   
+            ArgumentSize::Byte => {
+                s = format!("${:04X}: b{},", self.prev_pc, self.instruction);
+                for i in 0..(self.instruction.size as usize) {
+                    if (self.instruction.args << i) & 0x04 > 0 {
+                        s = format!("{} [{}]",s,self.instruction.arg[i] as u8);
+                    }
+                    else{
+                        s = format!("{} {}",s,self.instruction.arg[i] as u8);
+                    }
+                }  
+                s = format!("{}\t",s);
+                s = format!("{} {:02X}",s,opcodes::get_opcode(self) as u8);
+                for i in 0..(self.instruction.size as usize) {
+                    s = format!("{} {:02X}",s,self.instruction.arg[i] as u8);
+                }  
+            }
+        }
+        s = format!("{}\n",s);
+        s
     }
 
-    
-
-
+    pub fn get_instruction_index(&mut self) -> u32 {
+        match self.instruction.addressing_type {
+            ArgumentSize::Int => (((self.instruction_u8 >> 4) & 0x0F) | 0x10) as u32,
+            ArgumentSize::Byte => ((self.instruction_u8 >> 4) & 0x0F) as u32,
+        }
+    }
 }

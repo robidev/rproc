@@ -88,37 +88,50 @@ pub fn run(cpu: &mut cpu::CPU) -> bool {
     match cpu.instruction.opcode {
         Op::JMP => { 
             match cpu.instruction.arg[1] {
-                1 => { if cpu.get_status_flag(cpu::StatusFlag::Carry) { cpu.pc = cpu.instruction.arg[0]; } }
-                2 => { if cpu.get_status_flag(cpu::StatusFlag::Zero ) { cpu.pc = cpu.instruction.arg[0]; } }
-                3 => { if cpu.get_status_flag(cpu::StatusFlag::Overflow) { cpu.pc = cpu.instruction.arg[0]; } }
-                4 => { if cpu.get_status_flag(cpu::StatusFlag::Negative) { cpu.pc = cpu.instruction.arg[0]; } }
+                
+                1 => { if cpu.get_status_flag(cpu::StatusFlag::Carry) { cpu.pc = cpu.instruction.arg[0]; } },
+                2 => { if cpu.get_status_flag(cpu::StatusFlag::Zero ) { cpu.pc = cpu.instruction.arg[0]; } },
+                3 => { if cpu.get_status_flag(cpu::StatusFlag::Overflow) { cpu.pc = cpu.instruction.arg[0]; } },
+                4 => { if cpu.get_status_flag(cpu::StatusFlag::Negative) { cpu.pc = cpu.instruction.arg[0]; } },
 
-                5 => { if !cpu.get_status_flag(cpu::StatusFlag::Carry) { cpu.pc = cpu.instruction.arg[0]; } }
-                6 => { if !cpu.get_status_flag(cpu::StatusFlag::Zero ) { cpu.pc = cpu.instruction.arg[0]; } }
-                7 => { if !cpu.get_status_flag(cpu::StatusFlag::Overflow) { cpu.pc = cpu.instruction.arg[0]; } }
-                8 => { if !cpu.get_status_flag(cpu::StatusFlag::Negative) { cpu.pc = cpu.instruction.arg[0]; } }
-                _ => cpu.pc = cpu.instruction.arg[0]                
+                5 => { if !cpu.get_status_flag(cpu::StatusFlag::Carry) { cpu.pc = cpu.instruction.arg[0]; } },
+                6 => { if !cpu.get_status_flag(cpu::StatusFlag::Zero ) { cpu.pc = cpu.instruction.arg[0]; } },
+                7 => { if !cpu.get_status_flag(cpu::StatusFlag::Overflow) { cpu.pc = cpu.instruction.arg[0]; } },
+                8 => { if !cpu.get_status_flag(cpu::StatusFlag::Negative) { cpu.pc = cpu.instruction.arg[0]; } },
+
+                9 => { if cpu.get_status_flag(cpu::StatusFlag::Carry) { cpu.pc = (cpu.pc as i32 + cpu.instruction.arg[0] as i32) as u32; } },
+                10 => { if cpu.get_status_flag(cpu::StatusFlag::Zero ) { cpu.pc = (cpu.pc as i32 + cpu.instruction.arg[0] as i32) as u32; } },
+                11 => { if cpu.get_status_flag(cpu::StatusFlag::Overflow) { cpu.pc = (cpu.pc as i32 + cpu.instruction.arg[0] as i32) as u32; } },
+                12 => { if cpu.get_status_flag(cpu::StatusFlag::Negative) { cpu.pc = (cpu.pc as i32 + cpu.instruction.arg[0] as i32) as u32; } },
+
+                13 => { if !cpu.get_status_flag(cpu::StatusFlag::Carry) { cpu.pc = (cpu.pc as i32 + cpu.instruction.arg[0] as i32) as u32; } },
+                14 => { if !cpu.get_status_flag(cpu::StatusFlag::Zero ) { cpu.pc = (cpu.pc as i32 + cpu.instruction.arg[0] as i32) as u32; } },
+                15 => { if !cpu.get_status_flag(cpu::StatusFlag::Overflow) { cpu.pc = (cpu.pc as i32 + cpu.instruction.arg[0] as i32) as u32; } },
+                16 => { if !cpu.get_status_flag(cpu::StatusFlag::Negative) { cpu.pc = (cpu.pc as i32 + cpu.instruction.arg[0] as i32) as u32; } },
+
+                17 => { cpu.pc = (cpu.pc as i32 + cpu.instruction.arg[0] as i32) as u32; },
+                _ => cpu.pc = cpu.instruction.arg[0],
             }
         },
         Op::CLL => {
             let pos = cpu.pc;
-            cpu.pc = cpu.instruction.arg[0];
+            cpu.pc = cpu.instruction.arg[0]+cpu.instruction.arg[1];
 
-            //call A, and push pos on B, and inc c
-            let adr = cpu.read_int_le(cpu.instruction.arg[1]);
+            //call A+B, and store pos on C
+            let adr = cpu.instruction.arg[2];
             cpu.write_int_le(adr,pos);
-
-            //if c is not 0, decrement value that c points to
-            if cpu.instruction.arg[2] > 0{
-                let stack = cpu.read_int_le(cpu.instruction.arg[2]);
-                cpu.write_int_le(cpu.instruction.arg[2], stack - 4);
-            }
         },
-        Op::LDR => {//LDR/POP 3 POP A from [B] (and inc c)
+        Op::LDR => {//LDR/POP 3 POP A from [B] (and inc c) TODO: add pc relative addressing, and sp relative addressing
             match cpu.instruction.addressing_type { 
                 ArgumentSize::Byte => {
-                    let val = cpu.read_byte(cpu.instruction.arg[1]);
-                    cpu.write_byte(cpu.instruction.arg[0],val);
+                    if cpu.instruction.args & 0x02 > 0 {
+                        let val = cpu.instruction.arg[1];
+                        cpu.write_byte(cpu.instruction.arg[0],val as u8);
+                    }
+                    else {//if 2nd arg is not a reference, special case: pc relative ldr
+                        let val = cpu.read_byte((cpu.instruction.arg[1] as i32 + cpu.pc as i32) as u32);
+                        cpu.write_byte(cpu.instruction.arg[0],val);                        
+                    }
 
                     //if c is not 0, increment value that c points to
                     if cpu.instruction.arg[2] > 0{
@@ -127,8 +140,14 @@ pub fn run(cpu: &mut cpu::CPU) -> bool {
                     }
                 }
                 ArgumentSize::Int => {
-                    let val = cpu.read_int_le(cpu.instruction.arg[1]);
-                    cpu.write_int_le(cpu.instruction.arg[0],val);
+                    if cpu.instruction.args & 0x02 > 0 {
+                        let val = cpu.instruction.arg[1];
+                        cpu.write_int_le(cpu.instruction.arg[0],val);
+                    }
+                    else {//if 2nd arg is not a reference, special case: pc relative ldr
+                        let val = cpu.read_int_le((cpu.instruction.arg[1] as i32 + cpu.pc as i32) as u32);
+                        cpu.write_int_le(cpu.instruction.arg[0],val);                        
+                    }
 
                     //if c is not 0, increment value that c points to
                     if cpu.instruction.arg[2] > 0{
@@ -138,7 +157,7 @@ pub fn run(cpu: &mut cpu::CPU) -> bool {
                 }
             };
         },
-        Op::STR => {//STR/PUSH 3 PUSH A on [B] (and inc c)
+        Op::STR => {//STR/PUSH 3 PUSH A on [B] (and inc c) TODO: add pc relative addressing, and sp relative addressing
             match cpu.instruction.addressing_type { 
                 ArgumentSize::Byte => {
                     let adr = cpu.read_int_le(cpu.instruction.arg[1]);
@@ -347,11 +366,17 @@ pub fn run(cpu: &mut cpu::CPU) -> bool {
 pub fn fetch_operand_addr(cpu: &mut cpu::CPU) -> bool {
     for arg_i in 0..cpu.instruction.size {
         if (cpu.instruction.args << arg_i) & 0x04 > 0 {
-            let ref_val  = cpu.next_int();
-            cpu.instruction.arg[arg_i as usize] = cpu.read_int_le(ref_val);
+            let ref_val = cpu.next_int();
+            match cpu.instruction.addressing_type {
+                ArgumentSize::Byte => { cpu.instruction.arg[arg_i as usize] = cpu.read_byte(ref_val) as u32; },
+                ArgumentSize::Int => {  cpu.instruction.arg[arg_i as usize] = cpu.read_int_le(ref_val); },
+            }
         }
         else {
-            cpu.instruction.arg[arg_i as usize] = cpu.next_int();
+            match cpu.instruction.addressing_type {
+                ArgumentSize::Byte => { cpu.instruction.arg[arg_i as usize] = cpu.next_byte() as u32; },
+                ArgumentSize::Int => { cpu.instruction.arg[arg_i as usize] = cpu.next_int(); },
+            }
         }
     }
     true
@@ -376,7 +401,7 @@ pub fn get_instruction(opcode: u8) -> Option<(Op, u8, u8, ArgumentSize)> {
 
     Some(match opcode & 0xF0 {
         /*JMP      */ 0x00 => (Op::JMP, 2,args,addr_type), //- A, B=modifiers EQ/NE Z/NZ C/NC V/NV Q/NQ GE/LE G/L (4 bits)
-        /*CALL     */ 0x10 => (Op::CLL, 3,args,addr_type), // CALL 3 CALL A, push B on [C]
+        /*CALL     */ 0x10 => (Op::CLL, 3,args,addr_type), // CALL 3 CALL A+B [C]=pos
         //Byte/Int (1 bit), immediate, address(1bit*3 arg)
         /*ADD      */ 0x20 => (Op::ADD, 3,args,addr_type), // ADD 3 A=B+C (can also be MOV)
         /*SUB      */ 0x30 => (Op::SUB, 3,args,addr_type),   // SUB 3 A=B-C
@@ -388,7 +413,7 @@ pub fn get_instruction(opcode: u8) -> Option<(Op, u8, u8, ArgumentSize)> {
         /*OR       */ 0x90 => (Op::OR, 3,args,addr_type), // OR  3 A = B OR C
         /*XOR      */ 0xA0 => (Op::XOR, 3,args,addr_type), // XOR 3 A=B^C
         /*MUL      */ 0xB0 => (Op::MUL, 3,args,addr_type), // MUL 3 A=B*C
-        /*STR      */ 0xC0 => (Op::STR, 3,args,addr_type), // STR/PUSH 3 PUSH A on [B] (and inc c)
+        /*STR      */ 0xC0 => (Op::STR, 3,args,addr_type), // STR/PUSH 3 PUSH A on [B] (and dec c)
         /*LDR      */ 0xD0 => (Op::LDR, 3,args,addr_type), // LDR/POP 3 POP A from [B] (and inc c)
         /*NOT      */ 0xE0 => (Op::NOT, 2,args,addr_type), // NOT 2 A!=B (c=OPTIONS?)
         /*CMP      */ 0xF0 => (Op::CMP, 2,args,addr_type), // CMP 2 A?B (c=OPTIONS?)
@@ -436,7 +461,10 @@ pub fn push_operand_addr(cpu: &mut cpu::CPU) -> bool {
 
 pub fn pull_operand_addr(cpu: &mut cpu::CPU) -> bool {
     for arg_i in 0..cpu.instruction.size {
-        cpu.instruction.arg[arg_i as usize] = cpu.next_int();
+        match cpu.instruction.addressing_type {
+            ArgumentSize::Int => cpu.instruction.arg[arg_i as usize] = cpu.next_int(),
+            ArgumentSize::Byte => cpu.instruction.arg[arg_i as usize] = cpu.next_byte() as u32,
+        }
     }
     true
 }
