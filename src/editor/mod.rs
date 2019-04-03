@@ -1,6 +1,12 @@
 use ncurses::*;
 use crate::virpc::cpu;
 
+static COLOR_BACKGROUND: i16 = 16;
+static COLOR_FOREGROUND: i16 = 17;
+static COLOR_KEYWORD: i16 = 18;
+static COLOR_PAIR_DEFAULT: i16 = 1;
+static COLOR_PAIR_KEYWORD: i16 = 2;
+
 static WIN1_MAXWIDTH : i32 = 35;
 static WIN12_HEIGHT : u32 = 25;
 static WIN3_MAXWIDTH : u32 = 30;
@@ -27,7 +33,7 @@ pub struct Windows {
     pub menu1_choice : u32,
     menu2_choice : u32,
     menu3_choice : u32,
-    cpu_reader : cpu::CPUShared,
+    pub cpu_reader : cpu::CPUShared,
 }
 
 impl Windows {
@@ -39,6 +45,15 @@ impl Windows {
         let mut litems1: Vec<ITEM> = Vec::new();
         let mut litems2: Vec<ITEM> = Vec::new();
         let mut litems3: Vec<ITEM> = Vec::new();
+
+        initscr();
+        keypad(stdscr(), true);
+        noecho();
+        curs_set(CURSOR_VISIBILITY::CURSOR_INVISIBLE);
+        start_color();
+        init_pair(COLOR_PAIR_DEFAULT, COLOR_WHITE, COLOR_BLACK);
+        init_pair(COLOR_PAIR_KEYWORD, COLOR_BLACK, COLOR_WHITE);
+
         refresh();//needed for screen size
         getmaxyx(stdscr(), &mut screen_height, &mut screen_width);
         let s = format!("edit:{:08X},current:{:08X} <F5 run/pause> <F6 reset> <F9 breakpoint> <F10 step>",0,0);
@@ -82,6 +97,13 @@ impl Windows {
         };
 
         _windows.refresh_pad();
+
+        _windows.items1 = _windows.cpu_reader.borrow_mut().get_commands_list();
+        Windows::update_menu(_windows.menu1, &mut _windows.items1,0);
+        _windows.items2 = _windows.cpu_reader.borrow_mut().get_variables_list();
+        Windows::update_menu(_windows.menu2, &mut _windows.items2,0);
+        _windows.items3 =  _windows.cpu_reader.borrow_mut().get_labels_list();
+        Windows::update_menu(_windows.menu3, &mut _windows.items3,0);
         _windows
     }
     pub fn resize_check(&mut self) {
@@ -140,8 +162,6 @@ impl Windows {
         for i in 0..end {
             lpc = self.cpu_reader.borrow_mut().disassemble(lpc);
             if i == self.edit_pc {
-                //wprintw(self.win2_sub,">");
-                
                 wattrset(self.win2_sub, COLOR_PAIR(2));
                 
                 self.menu1_choice = self.cpu_reader.borrow_mut().get_instruction_index();
@@ -217,13 +237,7 @@ impl Windows {
         let mut y = 0;
         getmaxyx(win,&mut y,&mut _x);
         y -= 1;
-        //x -= 1;
-        //let s = format!("TEST:{},{}",x,y);
-        //wprintw(win,s.as_str());
-        /* Create menu */
         let my_menu = new_menu(items);
-        //menu_opts_off(my_menu, O_SHOWDESC);
-        //menu_opts_off(my_menu, O_ONEVALUE);
         /* Set main window and sub window */
         set_menu_win(my_menu, win);
         set_menu_sub(my_menu, derwin(win,y,0, 1, 1));

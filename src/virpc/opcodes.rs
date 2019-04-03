@@ -122,61 +122,138 @@ pub fn run(cpu: &mut cpu::CPU) -> bool {
             cpu.write_int_le(adr,pos);
         },
         Op::LDR => {//LDR/POP 3 POP A from [B] (and inc c) TODO: add pc relative addressing, and sp relative addressing
+                //options are:
+                //read val from addr (and inc addr2)
+                //read val from pc+const
+                //read val from [addr](+const), and inc addr => pop a/[a]
+                //read val from [addr]+const
             match cpu.instruction.addressing_type { 
                 ArgumentSize::Byte => {
                     if cpu.instruction.args & 0x02 > 0 {
                         let val = cpu.instruction.arg[1];
                         cpu.write_byte(cpu.instruction.arg[0],val as u8);
-                    }
-                    else {//if 2nd arg is not a reference, special case: pc relative ldr
-                        let val = cpu.read_byte((cpu.instruction.arg[1] as i32 + cpu.pc as i32) as u32);
-                        cpu.write_byte(cpu.instruction.arg[0],val);                        
-                    }
 
-                    //if c is not 0, increment value that c points to
-                    if cpu.instruction.arg[2] > 0{
-                        let stack = cpu.read_int_le(cpu.instruction.arg[2]);
-                        cpu.write_int_le(cpu.instruction.arg[2], stack + 1);
+                        //increment value that c points to, if args==xx0
+                        if cpu.instruction.args & 0x01 == 0 {
+                            let stack = cpu.read_int_le(cpu.instruction.arg[2]);
+                            cpu.write_int_le(cpu.instruction.arg[2], stack + 1);
+                        }
+                    }
+                    else {//if 2nd arg is not a reference, special case: pc relative ldr, or arg2 relative
+                        if cpu.instruction.arg[2] == 0 {
+                            let val = cpu.read_byte((cpu.instruction.arg[1] as i32 + cpu.pc as i32) as u32);
+                            cpu.write_byte(cpu.instruction.arg[0],val);   
+                        }
+                        else {
+                            if cpu.instruction.args & 0x01 == 0 {//pop(a=[[stack+b]++]) = ldr 1 b010,
+                                let stack = cpu.instruction.arg[2];
+                                let val = cpu.read_byte((cpu.instruction.arg[1] as i32 + stack as i32) as u32);
+                                cpu.write_byte(cpu.instruction.arg[0],val);  
+                                cpu.write_int_le(cpu.instruction.arg[2], stack + 1);                           
+                            }
+                            else {//ldr(a=[b+sp])
+                                let stack = cpu.instruction.arg[2];
+                                let val = cpu.read_byte((cpu.instruction.arg[1] as i32 + stack as i32) as u32);
+                                cpu.write_byte(cpu.instruction.arg[0],val);                                  
+                            }
+
+                        }                     
                     }
                 }
-                ArgumentSize::Int => {
-                    if cpu.instruction.args & 0x02 > 0 {
-                        let val = cpu.instruction.arg[1];
-                        cpu.write_int_le(cpu.instruction.arg[0],val);
-                    }
-                    else {//if 2nd arg is not a reference, special case: pc relative ldr
-                        let val = cpu.read_int_le((cpu.instruction.arg[1] as i32 + cpu.pc as i32) as u32);
-                        cpu.write_int_le(cpu.instruction.arg[0],val);                        
-                    }
+                ArgumentSize::Int => {  //ldr(a=[b]), optional: [c]++
+                    if cpu.instruction.args & 0x02 > 0 {//if arg1 is ref
+                        let val = cpu.instruction.arg[1];//value from ref(A/B/C)
+                        cpu.write_int_le(cpu.instruction.arg[0],val);//arg0/[arg0] = value
 
-                    //if c is not 0, increment value that c points to
-                    if cpu.instruction.arg[2] > 0{
-                        let stack = cpu.read_int_le(cpu.instruction.arg[2]);
-                        cpu.write_int_le(cpu.instruction.arg[2], stack + 4);
+                        //increment value that c points to, if args==xx0
+                        if cpu.instruction.args & 0x01 == 0 {
+                            let stack = cpu.read_int_le(cpu.instruction.arg[2]);//arg2=1=>500, stack=500
+                            cpu.write_int_le(cpu.instruction.arg[2], stack + 4);//1<-504
+                        }
+                    }
+                    else {//if 2nd arg is not a reference, special case: pc relative, or arg2 relative ldr
+                        if cpu.instruction.arg[2] == 0 {//ldr(a=[b+pc])
+                            let val = cpu.read_int_le((cpu.instruction.arg[1] as i32 + cpu.pc as i32) as u32);//value from [pc+arg1]
+                            cpu.write_int_le(cpu.instruction.arg[0],val);//arg0/[arg0] = value
+                        } 
+                        else {
+                            //increment value that c points to, if args==xx0
+                            if cpu.instruction.args & 0x01 == 0 {//pop(a=[[stack+b]++]) = ldr 1 b010,
+                                let stack = cpu.read_int_le(cpu.instruction.arg[2]);//arg2=1=>500, stack=500 
+                                let val = cpu.read_int_le((cpu.instruction.arg[1] as i32 + stack as i32) as u32);//value from [arg1+stack]
+                                cpu.write_int_le(cpu.instruction.arg[0],val);//arg0/[arg0] = value
+                                cpu.write_int_le(cpu.instruction.arg[2], stack + 4);//1<-504
+                            }
+                            else {//ldr(a=[b+sp])
+                                let stack = cpu.instruction.arg[2];//arg2=1=>500, stack=500 
+                                let val = cpu.read_int_le((cpu.instruction.arg[1] as i32 + stack as i32) as u32);//value from [arg1+stack]
+                                cpu.write_int_le(cpu.instruction.arg[0],val);//arg0/[arg0] = value
+                            }
+                        }                  
                     }
                 }
             };
         },
-        Op::STR => {//STR/PUSH 3 PUSH A on [B] (and inc c) TODO: add pc relative addressing, and sp relative addressing
+        Op::STR => {//STR/PUSH 3 PUSH A on [B] (and inc c) 
             match cpu.instruction.addressing_type { 
                 ArgumentSize::Byte => {
-                    let adr = cpu.read_int_le(cpu.instruction.arg[1]);
-                    cpu.write_byte(adr,cpu.instruction.arg[0] as u8);
+                    if cpu.instruction.args & 0x02 > 0 {
+                        let adr = cpu.instruction.arg[1];
+                        cpu.write_byte(adr,cpu.instruction.arg[0] as u8);//[arg1]=arg0/[arg0]
 
-                    //if c is not 0, decrement value that c points to
-                    if cpu.instruction.arg[2] > 0{
-                        let stack = cpu.read_int_le(cpu.instruction.arg[2]);
-                        cpu.write_int_le(cpu.instruction.arg[2], stack - 1);
+                        if cpu.instruction.args & 0x01 == 0 {//inc arg2
+                            let stack = cpu.read_int_le(cpu.instruction.arg[2]);
+                            cpu.write_int_le(cpu.instruction.arg[2], stack - 1);                      
+                        }
+                    }
+                    else {//if 2nd arg is not a reference, special case: pc relative str, or arg2 relative
+                        if cpu.instruction.arg[2] == 0 {
+                            let adr = (cpu.instruction.arg[1] as i32 + cpu.pc as i32) as u32;
+                            cpu.write_byte(adr,cpu.instruction.arg[0] as u8);
+                        }
+                        else {
+                            if cpu.instruction.args & 0x01 == 0 {
+                                let stack = cpu.read_int_le(cpu.instruction.arg[2]);//arg2=1, stack = 500
+                                let adr = (cpu.instruction.arg[1] as i32 + stack as i32) as u32;//adr = 500+arg1
+                                cpu.write_byte(adr,cpu.instruction.arg[0] as u8);  //[adr] = arg0/[arg0]
+                                cpu.write_int_le(cpu.instruction.arg[2], stack - 1); //1<-501
+                            }
+                            else {
+                                let stack = cpu.instruction.arg[2];
+                                let adr = (cpu.instruction.arg[1] as i32 + stack as i32) as u32;
+                                cpu.write_byte(adr,cpu.instruction.arg[0] as u8);                                
+                            }
+                        }
                     }
                 }
                 ArgumentSize::Int => {
-                    let adr = cpu.read_int_le(cpu.instruction.arg[1]);
-                    cpu.write_int_le(adr,cpu.instruction.arg[0]);
-
-                    //if c is not 0, decrement value that c points to
-                    if cpu.instruction.arg[2] > 0{
-                        let stack = cpu.read_int_le(cpu.instruction.arg[2]);
-                        cpu.write_int_le(cpu.instruction.arg[2], stack - 4);
+                    if cpu.instruction.args & 0x02 > 0 {
+                        let adr = cpu.instruction.arg[1];
+                        cpu.write_int_le(adr,cpu.instruction.arg[0]);
+                        //if c is not 0, decrement value that c points to
+                        if cpu.instruction.args & 0x01 == 0 {
+                            let stack = cpu.read_int_le(cpu.instruction.arg[2]);
+                            cpu.write_int_le(cpu.instruction.arg[2], stack - 4);
+                        }
+                    }
+                    else {//if 1st arg is not a reference, special case: pc relative str, or arg2 relative
+                        if cpu.instruction.arg[2] == 0 {//PC relative
+                            let adr = (cpu.instruction.arg[1] as i32 + cpu.pc as i32) as u32;
+                            cpu.write_int_le(adr,cpu.instruction.arg[0]);
+                        }
+                        else {//arg2+const
+                            if cpu.instruction.args & 0x01 == 0 {
+                                let stack = cpu.read_int_le(cpu.instruction.arg[2]);
+                                let adr = (cpu.instruction.arg[1] as i32 + stack as i32) as u32;
+                                cpu.write_int_le(adr,cpu.instruction.arg[0]);  
+                                cpu.write_int_le(cpu.instruction.arg[2], stack - 4);                               
+                            }
+                            else {
+                                let stack = cpu.instruction.arg[2];
+                                let adr = (cpu.instruction.arg[1] as i32 + stack as i32) as u32;
+                                cpu.write_int_le(adr,cpu.instruction.arg[0]);                                
+                            }
+                        }
                     }
                 }
             };
@@ -414,7 +491,11 @@ pub fn get_instruction(opcode: u8) -> Option<(Op, u8, u8, ArgumentSize)> {
         /*XOR      */ 0xA0 => (Op::XOR, 3,args,addr_type), // XOR 3 A=B^C
         /*MUL      */ 0xB0 => (Op::MUL, 3,args,addr_type), // MUL 3 A=B*C
         /*STR      */ 0xC0 => (Op::STR, 3,args,addr_type), // STR/PUSH 3 PUSH A on [B] (and dec c)
+        //if 2nd arg is not a reference, special case: pc relative str, or arg2 relative
+
         /*LDR      */ 0xD0 => (Op::LDR, 3,args,addr_type), // LDR/POP 3 POP A from [B] (and inc c)
+        //if 2nd arg is not a reference, special case: pc relative ldr, or arg2 relative
+        
         /*NOT      */ 0xE0 => (Op::NOT, 2,args,addr_type), // NOT 2 A!=B (c=OPTIONS?)
         /*CMP      */ 0xF0 => (Op::CMP, 2,args,addr_type), // CMP 2 A?B (c=OPTIONS?)
                          _ => return None

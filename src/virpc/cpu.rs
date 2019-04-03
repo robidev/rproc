@@ -5,6 +5,7 @@ use std::cell::RefCell;
 use std::rc::Rc;
 use crate::utils;
 use std::fmt;
+use ncurses::*;
 
 use opcodes::ArgumentSize;
 
@@ -283,5 +284,61 @@ impl CPU {
             ArgumentSize::Int => (((self.instruction_u8 >> 4) & 0x0F) | 0x10) as u32,
             ArgumentSize::Byte => ((self.instruction_u8 >> 4) & 0x0F) as u32,
         }
+    }
+
+    pub fn get_variables_list(&mut self) -> Vec<ITEM> {
+        let mut litems2: Vec<ITEM> = Vec::new();
+        litems2.push(new_item("register  (0x00)", "1"));//agree on register range
+        litems2.push(new_item("new const  (code)", "1"));//byte or int
+        litems2.push(new_item("new local  (stack 0x0000FFFF)", "2"));//agree on stack origin (since last call, with unmatched ret.)
+        litems2.push(new_item("new global (heap 0x00010000)", "3"));//agree on heap origin
+        litems2.push(new_item("-existing-", "4"));
+        litems2
+    }
+
+    pub fn get_labels_list(&mut self) -> Vec<ITEM> {
+        let mut litems3: Vec<ITEM> = Vec::new();
+        litems3.push(new_item("new label", ""));
+        litems3.push(new_item("-existing-", ""));//include 'libs', global calls, local jumps (since last call, with unmatched ret.)
+        //litems3.push(new_item(" label_0x00000001", ""));
+        //litems3.push(new_item(" lib_printf(a)", ""));
+        litems3
+    }
+
+    pub fn get_commands_list(&mut self) -> Vec<ITEM> {
+        let mut litems1: Vec<ITEM> = Vec::new();
+        litems1.push(new_item("bJMP", "(byte) Jump a, b=cond"));
+        litems1.push(new_item("bCLL", "(byte) Call a+b, c=pc"));
+        litems1.push(new_item("bADD", "(byte) Add a=b+c"));
+        litems1.push(new_item("bSUB", "(byte) Subtract a=b-c"));
+        litems1.push(new_item("bBSL", "(byte) Bit-shift left")); 
+        litems1.push(new_item("bBSR", "(byte) Bit-shift right"));
+        litems1.push(new_item("bRR", "(byte) Rotate right"));
+        litems1.push(new_item("bRL", "(byte) Rotate left"));
+        litems1.push(new_item("bAND", "(byte) And a=b&c")); 
+        litems1.push(new_item("bOR", "(byte) Or a=b|c"));
+        litems1.push(new_item("bXOR", "(byte) Xor a=b^c"));   
+        litems1.push(new_item("bMUL", "(byte) Multiply a=b*c"));                      
+        litems1.push(new_item("bLDR", "(byte) Load a<=[b], inc c"));
+        litems1.push(new_item("bSTR", "(byte) Store a=>[b], dec c"));
+        litems1.push(new_item("bNOT", "(byte) Not a != b"));
+        litems1.push(new_item("bCMP", "(byte) Compare a?b, c=?"));
+        litems1.push(new_item("iJMP", "(int) Jump a, b=cond"));
+        litems1.push(new_item("iCLL", "(int) Call a+b, c=pc"));
+        litems1.push(new_item("iADD", "(int) Add a=b+c"));
+        litems1.push(new_item("iSUB", "(int) Subtract a=b-c"));
+        litems1.push(new_item("iBSL", "(int) Bit-shift left")); 
+        litems1.push(new_item("iBSR", "(int) Bit-shift right"));
+        litems1.push(new_item("iRR", "(int) Rotate right"));
+        litems1.push(new_item("iRL", "(int) Rotate left"));
+        litems1.push(new_item("iAND", "(int) And a=b&c")); 
+        litems1.push(new_item("iOR", "(int) Or a=b|c"));
+        litems1.push(new_item("iXOR", "(int) Xor a=b^c"));   
+        litems1.push(new_item("iMUL", "(int) Multiply a=b*c"));                      
+        litems1.push(new_item("iLDR", "(int) Load a=[b], inc c"));
+        litems1.push(new_item("iSTR", "(int) Store a=[b], dec c"));
+        litems1.push(new_item("iNOT", "(int) Not a != b"));
+        litems1.push(new_item("iCMP", "(int) Compare a?b, c=?"));
+        litems1
     }
 }
