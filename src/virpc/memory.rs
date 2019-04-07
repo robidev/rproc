@@ -11,7 +11,7 @@ pub enum MemType {
     //Io,
 }
 
-const MEM_SIZE: usize = 0x20000;
+const MEM_SIZE: usize = 0x080000;
 
 // specific memory bank - RAM, ROM, IO
 pub struct MemBank {

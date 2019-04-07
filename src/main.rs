@@ -48,7 +48,6 @@ fn main() {
 
     let asmcpu = cpu::CPU::new_shared();
     virpc.reset();
-    virpc.run();
 
     asmcpu.borrow_mut().set_references(virpc.memory);
     let mut _windows : Windows = Windows::new(asmcpu);
@@ -64,5 +63,7 @@ fn main() {
         std::thread::sleep(std::time::Duration::from_millis(50));
     }
     _windows.destroy();
+
     //asmcpu.borrow_mut().text_to_instruction("    hello world [test]; aaa    ");
+
 }

@@ -63,13 +63,9 @@ impl Windows {
         let lwin3 = Windows::create_win(" variables ",screen_height/2, screen_width/2, screen_height/2, 0);
         let lwin4 = Windows::create_win(" labels ",screen_height/2, screen_width/2, screen_height/2, screen_width/2);
         refresh();//needed for win size
-        let lmenu1 = Windows::create_menu(&mut litems1,lwin1);
-        let lmenu2 = Windows::create_menu(&mut litems2,lwin3);
-        let lmenu3 = Windows::create_menu(&mut litems3,lwin4);
-        unpost_menu(lmenu1); //TODO: check if this is leaky
-        set_menu_mark(lmenu1, ">");
-        post_menu(lmenu1);
-        wrefresh(lwin1);
+        let lmenu1 = Windows::create_menu(&mut litems1,lwin1,0);
+        let lmenu2 = Windows::create_menu(&mut litems2,lwin3,0);
+        let lmenu3 = Windows::create_menu(&mut litems3,lwin4,0);
 
         let mut _windows = Windows {
             menu1 : lmenu1,
@@ -99,11 +95,12 @@ impl Windows {
         _windows.refresh_pad();
 
         _windows.items1 = _windows.cpu_reader.borrow_mut().get_commands_list();
-        Windows::update_menu(_windows.menu1, &mut _windows.items1,0);
+        _windows.menu1 = Windows::update_menu(_windows.win1, _windows.menu1, &mut _windows.items1,0);
         _windows.items2 = _windows.cpu_reader.borrow_mut().get_variables_list();
-        Windows::update_menu(_windows.menu2, &mut _windows.items2,0);
+        _windows.menu2 = Windows::update_menu(_windows.win3, _windows.menu2, &mut _windows.items2,0);
         _windows.items3 =  _windows.cpu_reader.borrow_mut().get_labels_list();
-        Windows::update_menu(_windows.menu3, &mut _windows.items3,0);
+        _windows.menu3 = Windows::update_menu(_windows.win4, _windows.menu3, &mut _windows.items3,0);
+
         _windows
     }
     pub fn resize_check(&mut self) {
@@ -146,16 +143,41 @@ impl Windows {
         Windows::delete_menu(self.menu1,&mut self.items1);
         Windows::delete_menu(self.menu2,&mut self.items2);
         Windows::delete_menu(self.menu3,&mut self.items3);
+        Windows::destroy_win(self.win2_sub);
+        Windows::destroy_win(self.win1);
+        Windows::destroy_win(self.win2);
+        Windows::destroy_win(self.win3);
+        Windows::destroy_win(self.win4);
         clear();
         endwin();
     }
 
+    fn destroy_win(win: WINDOW) {
+        delwin(win);
+    }
+
+    fn delete_menu(menu : MENU, items : &mut Vec<ITEM>)
+    {
+        let sub = menu_sub(menu);
+        unpost_menu(menu);
+        delwin(sub);
+
+        /* free items */
+        for &item in items.iter() {
+            free_item(item);
+        }
+
+        free_menu(menu);
+    }
+
     pub fn refresh_pad(&mut self) {
         let mut lpc = 0;
+
         let mut end = (self.screen_height/2-3) as u32;
         if (self.edit_pc + (self.screen_height/4-3) as u32) > (self.screen_height/2-3) as u32 {
             end = self.edit_pc + (self.screen_height/4-3) as u32;
         }
+        
         wattrset(self.win2_sub, COLOR_PAIR(1));
         wresize(self.win2_sub,self.screen_height/2-3, self.screen_width-WIN1_MAXWIDTH-2);
         wmove(self.win2_sub,0,0);
@@ -165,7 +187,25 @@ impl Windows {
                 wattrset(self.win2_sub, COLOR_PAIR(2));
                 
                 self.menu1_choice = self.cpu_reader.borrow_mut().get_instruction_index();
-                Windows::update_menu(self.menu1, &mut self.items1,self.menu1_choice);
+                self.menu1 = Windows::update_menu(self.win1, self.menu1, &mut self.items1,self.menu1_choice);
+
+                //update list2
+                /* free items */
+                for &item in self.items2.iter() {
+                    free_item(item);
+                }
+                let mut lvec : Vec<ITEM> = Vec::new();
+                for &item in self.cpu_reader.borrow_mut().data.clone().iter() {
+                    
+                    lvec.push(new_item(item_name(item), item_description(item)));
+                }
+                self.items2 = lvec;
+                self.menu2_choice = self.cpu_reader.borrow_mut().instruction.arg_index[0];
+                self.menu2 = Windows::update_menu(self.win3, self.menu2, &mut self.items2,self.menu2_choice);
+                //update list3
+                /*self.items3 = self.cpu_reader.borrow_mut().data.clone();
+                self.menu3_choice = self.cpu_reader.borrow_mut().instruction.arg_index[1];
+                Windows::update_menu(self.win4, self.menu3, &mut self.items3,self.menu3_choice);*/
             }
             if i >= end - ((self.screen_height/2-3) as u32) {
                 wprintw(self.win2_sub, self.cpu_reader.borrow_mut().instruction_to_text().as_str());
@@ -173,10 +213,6 @@ impl Windows {
             }
         }
         wrefresh(self.win2_sub);
-    }
-
-    fn destroy_win(win: WINDOW) {
-        delwin(win);
     }
 
     fn create_win(s: &str, h: i32,w: i32,x: i32,y: i32) -> WINDOW {
@@ -225,64 +261,39 @@ impl Windows {
         wrefresh(self.win3);
         wrefresh(self.win4);
 
-        Windows::update_menu(self.menu1, &mut self.items1, self.menu1_choice);
-        Windows::update_menu(self.menu2, &mut self.items2, self.menu2_choice);
-        Windows::update_menu(self.menu3, &mut self.items3, self.menu3_choice);
+        self.menu1 = Windows::update_menu(self.win1, self.menu1, &mut self.items1, self.menu1_choice);
+        self.menu2 = Windows::update_menu(self.win3, self.menu2, &mut self.items2, self.menu2_choice);
+        self.menu3 = Windows::update_menu(self.win4, self.menu3, &mut self.items3, self.menu3_choice);
 
         self.refresh_pad();
     }
 
-    fn create_menu(items : &mut Vec<ITEM>, win : WINDOW) -> MENU {
-        let mut _x = 0;
-        let mut y = 0;
-        getmaxyx(win,&mut y,&mut _x);
-        y -= 1;
-        let my_menu = new_menu(items);
-        /* Set main window and sub window */
-        set_menu_win(my_menu, win);
-        set_menu_sub(my_menu, derwin(win,y,0, 1, 1));
-        set_menu_format(my_menu,y-1, 1);
-
-        /* Set menu mark to the string " * " */
-        set_menu_mark(my_menu, " ");
-
-        /* Post the menu */
-        post_menu(my_menu);
-        wrefresh(win);
-        my_menu
-    }
-
-    pub fn update_menu(menu: MENU, items : &mut Vec<ITEM>, index : u32) {
-                /* Crate menu */
-        unpost_menu(menu);
-
+    pub fn create_menu(items : &mut Vec<ITEM>, win : WINDOW, index : u32) -> MENU {
         let mut x = 0;
         let mut y = 0;
-        getmaxyx(menu_win(menu),&mut y,&mut x);
-        y -= 1;
-        x -= 1;
-        set_menu_items(menu, items);
-        set_menu_format(menu, y-1, 1);
-        wresize(menu_sub(menu),y-1, x-1);
+        getmaxyx(win,&mut y,&mut x);
+        let menu = new_menu(items);
+        /* Set main window and sub window */
+        set_menu_win(menu, win);
+        set_menu_sub(menu, derwin(win,y-2,x-2, 1, 1));
+        set_menu_format(menu,y-2, 1);
+
         if index < items.len() as u32 {
             set_current_item(menu, items[index as usize]);
         }
-        
         /* Post the menu */
         post_menu(menu);
-        wrefresh(menu_win(menu));
+        wrefresh(win);
+        menu
     }
 
-    fn delete_menu(my_menu : MENU, items : &mut Vec<ITEM>)
-    {
-        unpost_menu(my_menu);
-
-        /* free items */
-        for &item in items.iter() {
-        free_item(item);
-        }
-
-        free_menu(my_menu);
+    pub fn update_menu(win : WINDOW, menu: MENU, items : &mut Vec<ITEM>, index : u32) -> MENU{
+                /* Crate menu */
+        let sub = menu_sub(menu);
+        unpost_menu(menu);
+        delwin(sub);
+        free_menu(menu);
+        Windows::create_menu(items, win, index)
     }
 
     //

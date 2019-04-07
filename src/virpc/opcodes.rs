@@ -45,6 +45,8 @@ pub struct Instruction {
     pub args: u8,  // immediate, or reference, for each argument
     pub addressing_type: ArgumentSize, //byte or int
     pub arg:Vec<u32>,
+    //menu index
+    pub arg_index:Vec<u32>,
 }
 
 impl Instruction {
@@ -55,9 +57,11 @@ impl Instruction {
             args: 0,
             addressing_type: ArgumentSize::Int,
             arg: Vec::<u32>::new(),
+            arg_index: Vec::<u32>::new(),
         };
         for _ in 0..3 {
             instruction.arg.push(0);
+            instruction.arg_index.push(0);
         }
         instruction
     }
@@ -122,13 +126,9 @@ pub fn run(cpu: &mut cpu::CPU) -> bool {
             cpu.write_int_le(adr,pos);
         },
         Op::LDR => {//LDR/POP 3 POP A from [B] (and inc c) TODO: add pc relative addressing, and sp relative addressing
-                //options are:
-                //read val from addr (and inc addr2)
-                //read val from pc+const
-                //read val from [addr](+const), and inc addr => pop a/[a]
-                //read val from [addr]+const
             match cpu.instruction.addressing_type { 
                 ArgumentSize::Byte => {
+                    //read val from [arg1], store in arg0 (and inc addr2)
                     if cpu.instruction.args & 0x02 > 0 {
                         let val = cpu.instruction.arg[1];
                         cpu.write_byte(cpu.instruction.arg[0],val as u8);
@@ -140,17 +140,21 @@ pub fn run(cpu: &mut cpu::CPU) -> bool {
                         }
                     }
                     else {//if 2nd arg is not a reference, special case: pc relative ldr, or arg2 relative
+                        //read val from pc+const_arg1, store in arg0
                         if cpu.instruction.arg[2] == 0 {
                             let val = cpu.read_byte((cpu.instruction.arg[1] as i32 + cpu.pc as i32) as u32);
                             cpu.write_byte(cpu.instruction.arg[0],val);   
                         }
+                        //arg2 is valid, so use as stack-pointer
                         else {
+                            //read val from [addr](+const), and inc addr => pop a/[a]
                             if cpu.instruction.args & 0x01 == 0 {//pop(a=[[stack+b]++]) = ldr 1 b010,
-                                let stack = cpu.instruction.arg[2];
+                                let stack = cpu.read_int_le(cpu.instruction.arg[2]);
                                 let val = cpu.read_byte((cpu.instruction.arg[1] as i32 + stack as i32) as u32);
                                 cpu.write_byte(cpu.instruction.arg[0],val);  
                                 cpu.write_int_le(cpu.instruction.arg[2], stack + 1);                           
                             }
+                            //read val from [addr]+const
                             else {//ldr(a=[b+sp])
                                 let stack = cpu.instruction.arg[2];
                                 let val = cpu.read_byte((cpu.instruction.arg[1] as i32 + stack as i32) as u32);
@@ -161,6 +165,7 @@ pub fn run(cpu: &mut cpu::CPU) -> bool {
                     }
                 }
                 ArgumentSize::Int => {  //ldr(a=[b]), optional: [c]++
+                    //read val from [arg1], store in arg0 (and inc addr2)
                     if cpu.instruction.args & 0x02 > 0 {//if arg1 is ref
                         let val = cpu.instruction.arg[1];//value from ref(A/B/C)
                         cpu.write_int_le(cpu.instruction.arg[0],val);//arg0/[arg0] = value
@@ -172,11 +177,14 @@ pub fn run(cpu: &mut cpu::CPU) -> bool {
                         }
                     }
                     else {//if 2nd arg is not a reference, special case: pc relative, or arg2 relative ldr
+                        //read val from pc+const_arg1, store in arg0
                         if cpu.instruction.arg[2] == 0 {//ldr(a=[b+pc])
                             let val = cpu.read_int_le((cpu.instruction.arg[1] as i32 + cpu.pc as i32) as u32);//value from [pc+arg1]
                             cpu.write_int_le(cpu.instruction.arg[0],val);//arg0/[arg0] = value
                         } 
+                        //arg2 is valid, so use as stack-pointer
                         else {
+                            //read val from [addr](+const), and inc addr => pop a/[a]
                             //increment value that c points to, if args==xx0
                             if cpu.instruction.args & 0x01 == 0 {//pop(a=[[stack+b]++]) = ldr 1 b010,
                                 let stack = cpu.read_int_le(cpu.instruction.arg[2]);//arg2=1=>500, stack=500 
@@ -184,6 +192,7 @@ pub fn run(cpu: &mut cpu::CPU) -> bool {
                                 cpu.write_int_le(cpu.instruction.arg[0],val);//arg0/[arg0] = value
                                 cpu.write_int_le(cpu.instruction.arg[2], stack + 4);//1<-504
                             }
+                            //read val from [addr]+const
                             else {//ldr(a=[b+sp])
                                 let stack = cpu.instruction.arg[2];//arg2=1=>500, stack=500 
                                 let val = cpu.read_int_le((cpu.instruction.arg[1] as i32 + stack as i32) as u32);//value from [arg1+stack]
