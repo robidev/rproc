@@ -13,17 +13,17 @@ use opcodes::Op;
 pub type CPUShared = Rc<RefCell<CPU>>;
 
 pub const RESET_VECTOR: u32 = 0x00000000;
-pub const REGISTERS: u32 = 0x00000001;//til 0x000000FF
-pub const CODE: u32 = 0x00000100;
+pub const CODE: u32 = 0x00000001;
 pub const BSS: u32 = 0x0000E000;
+pub const REGISTERS: u32 = 0x0000F000;//til 0x0000FFFF
 pub const MEMORY: u32 = 0x00010000;
 pub const STACK: u32 = 0x00080000;
 
-pub const PC_REG: u32 = 0x01;
-pub const STACK_REG: u32 = 0x02;
-pub const A_REG: u32 = 0x03;
-pub const B_REG: u32 = 0x04;
-pub const C_REG: u32 = 0x05;
+pub const PC_REG: u32 = 0xF000;
+pub const STACK_REG: u32 = 0xF001;
+pub const A_REG: u32 = 0xF002;
+pub const B_REG: u32 = 0xF003;
+pub const C_REG: u32 = 0xF004;
 
 // status flags for P register
 pub enum StatusFlag {
@@ -43,6 +43,10 @@ pub enum CPUState {
     ExecuteOp
 }
 
+pub struct Items {
+    name : String,
+    description : String,
+}
 
 pub struct CPU {
     pub pc: u32, // program counter
@@ -53,7 +57,7 @@ pub struct CPU {
     pub instruction_u8 : u8,
     pub state: CPUState,
     pub prev_pc: u32,
-    pub data : Vec<ITEM>,
+    pub data : Vec<Items>,
     pub depth : u32,
 }
 
@@ -67,13 +71,13 @@ impl CPU {
             state: CPUState::FetchOp,
             instruction: opcodes::Instruction::new(),
             prev_pc: 0,
-            data : Vec::new(),
+            data : CPU::get_variables_list(),
             depth : 0,
         }))
     }
 
     pub fn destroy(&mut self) {
-        
+        //TODO remove data-list
     }
 
 
@@ -197,7 +201,7 @@ impl CPU {
 
         //parse arguments 
         match self.instruction.opcode {
-            Op::LDR => {// LDR if pc-rel,push, add to local
+            Op::LDR => {// LDR if pc-rel,pop, add to local
                 //let mut index = 0;
                 if self.instruction.args & 0x04 == 0 { //if arg0 is not a ref
                     //TODO add arg0 to list if arg0 > MEMORY
@@ -244,7 +248,7 @@ impl CPU {
                     }                  
                 }
             },
-            // STR if pc-rel,pop remove from local
+            // STR if pc-rel,push remove from local
             Op::STR => {
                 let mut index = 0;
                 //store to [arg1], read from arg0 (and dec addr2)
@@ -266,7 +270,7 @@ impl CPU {
                         //add arg1+pc to LABEL
                         let s = format!("LABEL_{:08X}",self.instruction.arg[1]+self.pc); 
                         let d = format!("DEPTH{}",self.depth);
-                        index = CPU::add_new_item(&mut self.data, new_item(s, d) ); 
+                        index = CPU::add_new_item(&mut self.data, CPU::new_Item(s, d) ); 
                         self.instruction.arg_index[1] = index;//index of arg in list                       
                     }
                     else {//arg2+const
@@ -275,14 +279,20 @@ impl CPU {
                                 // add arg1 local var
                                  let s = format!("LOCALVAR_{:08X}",self.instruction.arg[1]+self.read_int_le(self.instruction.arg[2])); 
                                  let d = format!("DEPTH{}",self.depth);
-                                 index = CPU::add_new_item(&mut self.data, new_item(s, d) );
+                                 index = CPU::add_new_item(&mut self.data, CPU::new_Item(s, d) );
                                  self.instruction.arg_index[2] = index;//index of arg in list
                             }
                             else {
-                                if self.instruction.arg[2] > CODE {
-                                    // add arg2 to global var 
+                                if self.instruction.arg[2] > BSS {
+                                    // add arg2 to global var /reg
                                     let s = format!("VAR_{:08X}",self.instruction.arg[1]+self.read_int_le(self.instruction.arg[2])); 
-                                    index = CPU::add_new_item(&mut self.data, new_item(s, "DEPTH0".to_string()) );
+                                    index = CPU::add_new_item(&mut self.data, CPU::new_Item(s, "DEPTH0".to_string()) );
+                                    self.instruction.arg_index[2] = index;//index of arg in list
+                                }
+                                else {
+                                    // add arg2 to global const 
+                                    let s = format!("CONST_{:08X}",self.instruction.arg[1]+self.read_int_le(self.instruction.arg[2])); 
+                                    index = CPU::add_new_item(&mut self.data, CPU::new_Item(s, "DEPTH0".to_string()) );
                                     self.instruction.arg_index[2] = index;//index of arg in list
                                 }
                             }                               
@@ -291,7 +301,7 @@ impl CPU {
                             //value from VAR[arg1+[arg2]]
                             let s = format!("LOCALVAR_{:08X}",self.instruction.arg[1]+self.instruction.arg[2]); 
                             let d = format!("DEPTH{}",self.depth);
-                            index = CPU::add_new_item(&mut self.data, new_item(s, d) );
+                            index = CPU::add_new_item(&mut self.data, CPU::new_Item(s, d) );
                             self.instruction.arg_index[2] = index;//index of arg in list
                         }
                     }
@@ -303,7 +313,7 @@ impl CPU {
                 if self.instruction.args & 0x04 == 0 && self.instruction.args & 0x02 == 0 {
                     let s = format!("LABEL_{:08X}",self.instruction.arg[0] + self.instruction.arg[1]);
                     let d = format!("DEPTH{}",self.depth);
-                    let index = CPU::add_new_item(&mut self.data, new_item(s, d) );
+                    let index = CPU::add_new_item(&mut self.data, CPU::new_Item(s, d) );
                     self.instruction.arg_index[0] = index;//index of arg in list
                 }
             },
@@ -311,33 +321,50 @@ impl CPU {
             Op::JMP => {
                 if self.instruction.args & 0x04 == 0 {
                     if self.instruction.arg_index[1] < 9 {
-                        let s = format!("LABEL_{:08X}",self.instruction.arg[0]);
+                        let s   = format!("LABEL_{:08X}",self.instruction.arg[0]);
                         let d = format!("DEPTH{}",self.depth);
-                        let index = CPU::add_new_item(&mut self.data, new_item(s, d) );
+                        let index = CPU::add_new_item(&mut self.data, CPU::new_Item(s, d ) );
                         self.instruction.arg_index[0] = index;//index of arg in list
                     }
                     else {
-                        let s = format!("LABEL_{:08X}",self.instruction.arg[0] + self.pc);
+                        let s = format!("LABEL_{:08X} (pc+{})",self.instruction.arg[0] + self.pc, self.instruction.arg[0]);
                         let d = format!("DEPTH{}",self.depth);
-                        let index = CPU::add_new_item(&mut self.data, new_item(s, d) );
+                        let index = CPU::add_new_item(&mut self.data, CPU::new_Item(s, d) );
                         self.instruction.arg_index[0] = index;//index of arg in list
                     }
                 } 
+                else {
+                    let s = format!("REF_[{:08X}]",self.instruction.arg[0]);
+                    let d = format!("DEPTH{}",self.depth);
+                    let index = CPU::add_new_item(&mut self.data, CPU::new_Item(s, d) );
+                    self.instruction.arg_index[0] = index;//index of arg in list
+                }
             },
             _ => {//any other opcode, default behaviour
                 for i in 0..(self.instruction.size as usize) {
                     if (self.instruction.args << i) & 0x04 > 0 || (i == 0 && self.instruction.args & 0x04 == 0) {//arg 0 is always a ref, subsequent are const or ref
-                        let mut index = 0;
-                        let d = format!("DEPTH{}",self.depth);
+                        let mut d = format!("DEPTH{}",self.depth);
+                        let mut s = "".to_string();
                         match self.instruction.arg[i] {
-                            RESET_VECTOR => { index = CPU::add_new_item(&mut self.data, new_item("$RESET", "DEPTH0") ); },
-                            REGISTERS...CODE => { let s = format!("REG_{:08X}",self.instruction.arg[i]); index = CPU::add_new_item(&mut self.data, new_item(s, d) );},
-                            CODE...BSS => { let s = format!("LABEL_{:08X}",self.instruction.arg[i]); index = CPU::add_new_item(&mut self.data, new_item(s, d) );},
-                            BSS...MEMORY => { let s = format!("CONST_{:08X}",self.instruction.arg[i]); index = CPU::add_new_item(&mut self.data, new_item(s, d) );},
-                            MEMORY...STACK => { let s = format!("VAR_{:08X}",self.instruction.arg[0]); index = CPU::add_new_item(&mut self.data, new_item(s, "DEPTH0".to_string()) );},
+                            RESET_VECTOR => { s = "$RESET".to_string(); d = "DEPTH0".to_string(); },
+                            CODE...BSS => { s = format!("LABEL_{:08X}",self.instruction.arg[i]); },
+                            BSS...REGISTERS => { s = format!("REG_{:08X}",self.instruction.arg[i]); },
+                            REGISTERS...MEMORY => { s = format!("BSS_{:08X}",self.instruction.arg[i]); },
+                            MEMORY...STACK => { s = format!("VAR_{:08X}",self.instruction.arg[0]); d = "DEPTH0".to_string(); },//heap
                             _ => {},
                         }
-                        self.instruction.arg_index[i] = index;//index of arg in list
+                        self.instruction.arg_index[i] = CPU::add_new_item(&mut self.data, CPU::new_Item(s, d) );
+                    }
+                    else {
+                        let d = format!("DEPTH{}",self.depth);
+                        let mut s;
+                        if i == 0 {
+                            s = format!("REF_[{:08X}]",self.instruction.arg[i]);
+                        } else {
+                            s = format!("CONST_{:08X}",self.instruction.arg[i]);
+                        }
+                        
+                        self.instruction.arg_index[i] = CPU::add_new_item(&mut self.data, CPU::new_Item(s, d) );                       
                     }
                 }
             },
@@ -350,10 +377,10 @@ impl CPU {
         self.pc
     }
 
-    fn add_new_item(items : &mut Vec<ITEM>, new_item : ITEM) -> u32 {
+    fn add_new_item(items : &mut Vec<Items>, new_item : Items) -> u32 {
         for i in 0..items.len() {
-            if item_name(items[i]) == item_name(new_item) {
-                if item_description(items[i]) == item_description(new_item) {
+            if items[i].name == new_item.name {
+                if items[i].description == new_item.description {
                     return i as u32;
                 }
             }
@@ -362,18 +389,12 @@ impl CPU {
         items.len() as u32
     }
 
-    /*pub fn retrieve_local(&mut self) -> Vec<ITEM> {
-        litems1.push(new_item("aaa"));
-        litems1
+    fn new_Item (n : String, d : String) -> Items {
+        Items {
+            name : n,
+            description : d,
+        }
     }
-
-    pub fn retrieve_global() {
-        
-    }
-
-    pub fn retrieve_labels() {
-        
-    }*/
 
     pub fn assemble(&mut self) {
         //take an instruction object, and return the related opcode (and argument bytes), and commit to memory
@@ -483,59 +504,73 @@ impl CPU {
         }
     }
 
-    pub fn get_variables_list(&mut self) -> Vec<ITEM> {
-        let mut litems2: Vec<ITEM> = Vec::new();
-        litems2.push(new_item("register  (0x00)", "1"));//agree on register range
-        litems2.push(new_item("new const  (code)", "1"));//byte or int
-        litems2.push(new_item("new local  (stack 0x0000FFFF)", "2"));//agree on stack origin (since last call, with unmatched ret.)
-        litems2.push(new_item("new global (heap 0x00010000)", "3"));//agree on heap origin
-        litems2.push(new_item("-existing-", "4"));
-        litems2
+    pub fn argument_type(&mut self, arg : u32) -> u32 {
+        let cur_arg = (self.instruction_u8 & 0x0F) << arg;
+        if cur_arg & 0x04 == 0 { 0 }
+        else { 1 }
     }
 
-    pub fn get_labels_list(&mut self) -> Vec<ITEM> {
+    pub fn get_variables_list() -> Vec<Items> {
+        let mut litems: Vec<Items> = Vec::new();
+        litems.push(CPU::new_Item("register  (0xF000)".to_string(), " ".to_string()));//agree on register range
+        litems.push(CPU::new_Item("new const  (code)".to_string(), " ".to_string()));//byte or int
+        litems.push(CPU::new_Item("new local  (stack 0x0000FFFF)".to_string(), " ".to_string()));//agree on stack origin (since last call, with unmatched ret.)
+        litems.push(CPU::new_Item("new global (heap 0x00010000)".to_string(), " ".to_string()));//agree on heap origin
+        litems.push(CPU::new_Item("-existing-".to_string(), " ".to_string()));
+        litems
+    }
+
+    pub fn get_data_list(&mut self) ->  Vec<ITEM> {
+        let mut litems_d: Vec<ITEM> = Vec::new();
+        for it in self.data.iter() {
+            litems_d.push(new_item(it.name.as_bytes() , it.description.as_bytes() ));
+        }
+        litems_d
+    }
+
+    pub fn get_addressing_mode_list(&mut self) -> Vec<ITEM> {
         let mut litems3: Vec<ITEM> = Vec::new();
-        litems3.push(new_item("new label", ""));
-        litems3.push(new_item("-existing-", ""));//include 'libs', global calls, local jumps (since last call, with unmatched ret.)
-        //litems3.push(new_item(" label_0x00000001", ""));
-        //litems3.push(new_item(" lib_printf(a)", ""));
+        litems3.push(new_item("direct".as_bytes(), " ".as_bytes()));
+        litems3.push(new_item("indirect".as_bytes(), " ".as_bytes()));//include 'libs', global calls, local jumps (since last call, with unmatched ret.)
         litems3
     }
 
+
+
     pub fn get_commands_list(&mut self) -> Vec<ITEM> {
         let mut litems1: Vec<ITEM> = Vec::new();
-        litems1.push(new_item("bJMP", "(byte) Jump a, b=cond"));
-        litems1.push(new_item("bCLL", "(byte) Call a+b, c=pc"));
-        litems1.push(new_item("bADD", "(byte) Add a=b+c"));
-        litems1.push(new_item("bSUB", "(byte) Subtract a=b-c"));
-        litems1.push(new_item("bBSL", "(byte) Bit-shift left")); 
-        litems1.push(new_item("bBSR", "(byte) Bit-shift right"));
-        litems1.push(new_item("bRR", "(byte) Rotate right"));
-        litems1.push(new_item("bRL", "(byte) Rotate left"));
-        litems1.push(new_item("bAND", "(byte) And a=b&c")); 
-        litems1.push(new_item("bOR", "(byte) Or a=b|c"));
-        litems1.push(new_item("bXOR", "(byte) Xor a=b^c"));   
-        litems1.push(new_item("bMUL", "(byte) Multiply a=b*c"));                      
-        litems1.push(new_item("bLDR", "(byte) Load a<=[b], inc c"));
-        litems1.push(new_item("bSTR", "(byte) Store a=>[b], dec c"));
-        litems1.push(new_item("bNOT", "(byte) Not a != b"));
-        litems1.push(new_item("bCMP", "(byte) Compare a?b, c=?"));
-        litems1.push(new_item("iJMP", "(int) Jump a, b=cond"));
-        litems1.push(new_item("iCLL", "(int) Call a+b, c=pc"));
-        litems1.push(new_item("iADD", "(int) Add a=b+c"));
-        litems1.push(new_item("iSUB", "(int) Subtract a=b-c"));
-        litems1.push(new_item("iBSL", "(int) Bit-shift left")); 
-        litems1.push(new_item("iBSR", "(int) Bit-shift right"));
-        litems1.push(new_item("iRR", "(int) Rotate right"));
-        litems1.push(new_item("iRL", "(int) Rotate left"));
-        litems1.push(new_item("iAND", "(int) And a=b&c")); 
-        litems1.push(new_item("iOR", "(int) Or a=b|c"));
-        litems1.push(new_item("iXOR", "(int) Xor a=b^c"));   
-        litems1.push(new_item("iMUL", "(int) Multiply a=b*c"));                      
-        litems1.push(new_item("iLDR", "(int) Load a=[b], inc c"));
-        litems1.push(new_item("iSTR", "(int) Store a=[b], dec c"));
-        litems1.push(new_item("iNOT", "(int) Not a != b"));
-        litems1.push(new_item("iCMP", "(int) Compare a?b, c=?"));
+        litems1.push(new_item("bJMP".as_bytes(), "(byte) Jump a, b=cond".as_bytes()));
+        litems1.push(new_item("bCLL".as_bytes(), "(byte) Call a+b, c=pc".as_bytes()));
+        litems1.push(new_item("bADD".as_bytes(), "(byte) Add a=b+c".as_bytes()));
+        litems1.push(new_item("bSUB".as_bytes(), "(byte) Subtract a=b-c".as_bytes()));
+        litems1.push(new_item("bBSL".as_bytes(), "(byte) Bit-shift left".as_bytes())); 
+        litems1.push(new_item("bBSR".as_bytes(), "(byte) Bit-shift right".as_bytes()));
+        litems1.push(new_item("bRR".as_bytes(), "(byte) Rotate right".as_bytes()));
+        litems1.push(new_item("bRL".as_bytes(), "(byte) Rotate left".as_bytes()));
+        litems1.push(new_item("bAND".as_bytes(), "(byte) And a=b&c".as_bytes())); 
+        litems1.push(new_item("bOR".as_bytes(), "(byte) Or a=b|c".as_bytes()));
+        litems1.push(new_item("bXOR".as_bytes(), "(byte) Xor a=b^c".as_bytes()));   
+        litems1.push(new_item("bMUL".as_bytes(), "(byte) Multiply a=b*c".as_bytes()));                      
+        litems1.push(new_item("bLDR".as_bytes(), "(byte) Load a<=[b], inc c".as_bytes()));
+        litems1.push(new_item("bSTR".as_bytes(), "(byte) Store a=>[b], dec c".as_bytes()));
+        litems1.push(new_item("bNOT".as_bytes(), "(byte) Not a != b".as_bytes()));
+        litems1.push(new_item("bCMP".as_bytes(), "(byte) Compare a?b, c=?".as_bytes()));
+        litems1.push(new_item("iJMP".as_bytes(), "(int) Jump a, b=cond".as_bytes()));
+        litems1.push(new_item("iCLL".as_bytes(), "(int) Call a+b, c=pc".as_bytes()));
+        litems1.push(new_item("iADD".as_bytes(), "(int) Add a=b+c".as_bytes()));
+        litems1.push(new_item("iSUB".as_bytes(), "(int) Subtract a=b-c".as_bytes()));
+        litems1.push(new_item("iBSL".as_bytes(), "(int) Bit-shift left".as_bytes())); 
+        litems1.push(new_item("iBSR".as_bytes(), "(int) Bit-shift right".as_bytes()));
+        litems1.push(new_item("iRR".as_bytes(), "(int) Rotate right".as_bytes()));
+        litems1.push(new_item("iRL".as_bytes(), "(int) Rotate left".as_bytes()));
+        litems1.push(new_item("iAND".as_bytes(), "(int) And a=b&c".as_bytes())); 
+        litems1.push(new_item("iOR".as_bytes(), "(int) Or a=b|c".as_bytes()));
+        litems1.push(new_item("iXOR".as_bytes(), "(int) Xor a=b^c".as_bytes()));   
+        litems1.push(new_item("iMUL".as_bytes(), "(int) Multiply a=b*c".as_bytes()));                      
+        litems1.push(new_item("iLDR".as_bytes(), "(int) Load a=[b], inc c".as_bytes()));
+        litems1.push(new_item("iSTR".as_bytes(), "(int) Store a=[b], dec c".as_bytes()));
+        litems1.push(new_item("iNOT".as_bytes(), "(int) Not a != b".as_bytes()));
+        litems1.push(new_item("iCMP".as_bytes(), "(int) Compare a?b, c=?".as_bytes()));
         litems1
     }
 }

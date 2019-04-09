@@ -484,8 +484,20 @@ pub fn get_instruction(opcode: u8) -> Option<(Op, u8, u8, ArgumentSize)> {
         addr_type = ArgumentSize::Byte
     }
     
+    //jmp b = options
 
-    Some(match opcode & 0xF0 {
+    //  arg0 can be arg0/[arg0]
+    //
+    //ldr   arg0 = [arg1], (with inc arg2),         (arg1==[], arg2=*)
+    //      arg0 = [pc+arg1(const)] (arg2=0)        (arg1!=[], arg2==0)
+    //      pop from [arg1(const)+arg2++] into arg0 (arg1!=[], arg2!=[]) 
+    //      arg0 = [addr+const]                     (arg1!=[], arg2==[])
+
+    //str   [arg1] = arg0, (with inc arg2),         (arg1==[], arg2=*)
+    //      [pc+arg1(const)] = arg0 (arg2=0)        (arg1!=[], arg2==0)
+    //      push arg0 onto [arg1(const) + arg2++]   (arg1!=[], arg2!=[])
+    //      [arg1(const) + arg2] = arg0             (arg1!=[], arg2==[])
+    Some(match opcode & 0xF0 {                  
         /*JMP      */ 0x00 => (Op::JMP, 2,args,addr_type), //- A, B=modifiers EQ/NE Z/NZ C/NC V/NV Q/NQ GE/LE G/L (4 bits)
         /*CALL     */ 0x10 => (Op::CLL, 3,args,addr_type), // CALL 3 CALL A+B [C]=pos
         //Byte/Int (1 bit), immediate, address(1bit*3 arg)

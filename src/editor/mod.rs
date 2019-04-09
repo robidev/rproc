@@ -34,6 +34,7 @@ pub struct Windows {
     menu2_choice : u32,
     menu3_choice : u32,
     pub cpu_reader : cpu::CPUShared,
+    cur_arg : u32,
 }
 
 impl Windows {
@@ -60,8 +61,8 @@ impl Windows {
         mvprintw(0,0,s.as_str());
         let lwin1 = Windows::create_win("<commands>",screen_height/2-1, WIN1_MAXWIDTH, 1, 0);
         let lwin2 = Windows::create_win(" code ",screen_height/2-1, screen_width-WIN1_MAXWIDTH, 1, WIN1_MAXWIDTH);
-        let lwin3 = Windows::create_win(" variables ",screen_height/2, screen_width/2, screen_height/2, 0);
-        let lwin4 = Windows::create_win(" labels ",screen_height/2, screen_width/2, screen_height/2, screen_width/2);
+        let lwin3 = Windows::create_win(" variables - arg 0",screen_height/2, screen_width/2, screen_height/2, 0);
+        let lwin4 = Windows::create_win(" addressing mode ",screen_height/2, screen_width/2, screen_height/2, screen_width/2);
         refresh();//needed for win size
         let lmenu1 = Windows::create_menu(&mut litems1,lwin1,0);
         let lmenu2 = Windows::create_menu(&mut litems2,lwin3,0);
@@ -90,15 +91,16 @@ impl Windows {
             menu2_choice : 0,
             menu3_choice : 0,
             cpu_reader :  cpu,
+            cur_arg : 0,
         };
 
         _windows.refresh_pad();
 
         _windows.items1 = _windows.cpu_reader.borrow_mut().get_commands_list();
         _windows.menu1 = Windows::update_menu(_windows.win1, _windows.menu1, &mut _windows.items1,0);
-        _windows.items2 = _windows.cpu_reader.borrow_mut().get_variables_list();
+        _windows.items2 = _windows.cpu_reader.borrow_mut().get_data_list();
         _windows.menu2 = Windows::update_menu(_windows.win3, _windows.menu2, &mut _windows.items2,0);
-        _windows.items3 =  _windows.cpu_reader.borrow_mut().get_labels_list();
+        _windows.items3 =  _windows.cpu_reader.borrow_mut().get_addressing_mode_list();
         _windows.menu3 = Windows::update_menu(_windows.win4, _windows.menu3, &mut _windows.items3,0);
 
         _windows
@@ -186,26 +188,17 @@ impl Windows {
             if i == self.edit_pc {
                 wattrset(self.win2_sub, COLOR_PAIR(2));
                 
+                self.items1 = Windows::update_list(&mut self.items1,&mut self.cpu_reader.borrow_mut().get_commands_list());
                 self.menu1_choice = self.cpu_reader.borrow_mut().get_instruction_index();
                 self.menu1 = Windows::update_menu(self.win1, self.menu1, &mut self.items1,self.menu1_choice);
 
-                //update list2
-                /* free items */
-                for &item in self.items2.iter() {
-                    free_item(item);
-                }
-                let mut lvec : Vec<ITEM> = Vec::new();
-                for &item in self.cpu_reader.borrow_mut().data.clone().iter() {
-                    
-                    lvec.push(new_item(item_name(item), item_description(item)));
-                }
-                self.items2 = lvec;
-                self.menu2_choice = self.cpu_reader.borrow_mut().instruction.arg_index[0];
+                self.items2 = Windows::update_list(&mut self.items2,&mut self.cpu_reader.borrow_mut().get_data_list());
+                self.menu2_choice = self.cpu_reader.borrow_mut().instruction.arg_index[self.cur_arg as usize];
                 self.menu2 = Windows::update_menu(self.win3, self.menu2, &mut self.items2,self.menu2_choice);
-                //update list3
-                /*self.items3 = self.cpu_reader.borrow_mut().data.clone();
-                self.menu3_choice = self.cpu_reader.borrow_mut().instruction.arg_index[1];
-                Windows::update_menu(self.win4, self.menu3, &mut self.items3,self.menu3_choice);*/
+
+                self.items3 = Windows::update_list(&mut self.items3,&mut self.cpu_reader.borrow_mut().get_addressing_mode_list());
+                self.menu3_choice = self.cpu_reader.borrow_mut().argument_type(self.cur_arg);
+                self.menu3 = Windows::update_menu(self.win4, self.menu3, &mut self.items3,self.menu3_choice);
             }
             if i >= end - ((self.screen_height/2-3) as u32) {
                 wprintw(self.win2_sub, self.cpu_reader.borrow_mut().instruction_to_text().as_str());
@@ -223,6 +216,19 @@ impl Windows {
         win
     }
 
+    fn update_list(items : &mut Vec<ITEM>, new_items : &mut Vec<ITEM>) -> Vec<ITEM> {
+        /* free items */
+        for &ditem in items.iter() {
+            free_item(ditem);
+        }
+        let mut lvec : Vec<ITEM> = Vec::new();
+        for &nitem in new_items.iter() {
+            
+            lvec.push(new_item(item_name(nitem), item_description(nitem)));
+        }
+        lvec
+    }
+
     fn update(&mut self) {
         let s = format!("edit:{:08X},current:{:08X} <F5 run/pause> <F6 reset> <F9 breakpoint> <F10 step>",self.edit_pc,self.current_pc);
         mvprintw(0,0,s.as_str());
@@ -230,26 +236,26 @@ impl Windows {
             0 => {
                 mvwprintw(self.win1,0,1,"<commands>");
                 mvwprintw(self.win2,0,1," code ");
-                mvwprintw(self.win3,0,1," variables ");
-                mvwprintw(self.win4,0,1," labels ");
+                mvwprintw(self.win3,0,1,format!(" variables  - arg {}",self.cur_arg).as_str());
+                mvwprintw(self.win4,0,1," addressing mode ");
             }
             1 => {
                 mvwprintw(self.win1,0,1," commands ");
                 mvwprintw(self.win2,0,1,"<code>");
-                mvwprintw(self.win3,0,1," variables ");
-                mvwprintw(self.win4,0,1," labels ");
+                mvwprintw(self.win3,0,1,format!(" variables  - arg {}",self.cur_arg).as_str());
+                mvwprintw(self.win4,0,1," addressing mode ");
             }
             2 => {
                 mvwprintw(self.win1,0,1," commands ");
                 mvwprintw(self.win2,0,1," code ");
-                mvwprintw(self.win3,0,1,"<variables>");
-                mvwprintw(self.win4,0,1," labels ");
+                mvwprintw(self.win3,0,1,format!("<variables> - arg {}",self.cur_arg).as_str());
+                mvwprintw(self.win4,0,1," addressing mode ");
             }
             3 => {
                 mvwprintw(self.win1,0,1," commands ");
                 mvwprintw(self.win2,0,1," code ");
-                mvwprintw(self.win3,0,1," variables ");
-                mvwprintw(self.win4,0,1,"<labels>");
+                mvwprintw(self.win3,0,1,format!(" variables  - arg {}",self.cur_arg).as_str());
+                mvwprintw(self.win4,0,1,"<addressing mode>");
             }
             _ => {
                 
@@ -308,14 +314,6 @@ impl Windows {
                 }
                 self.update();
             }
-            KEY_LEFT => {
-                self.edit_pc -= 1;
-                self.update();
-            }
-            KEY_RIGHT => {
-                self.edit_pc += 1;
-                self.update();
-            }
             _ => {
                 match self.focus {
                     0 => self.handle_keys_win1(ch),
@@ -367,6 +365,18 @@ impl Windows {
             KEY_DOWN => {
                 menu_driver(self.menu2, REQ_DOWN_ITEM);
                 wrefresh(self.win3);
+            }
+            KEY_LEFT => {
+                if self.cur_arg > 0 {
+                    self.cur_arg -= 1;
+                    self.update();
+                }
+            }
+            KEY_RIGHT => {
+                if self.cur_arg < 2 {
+                    self.cur_arg += 1;
+                    self.update();                    
+                }
             }
             _ => {}
         }

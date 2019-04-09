@@ -67,3 +67,4 @@ fn main() {
     //asmcpu.borrow_mut().text_to_instruction("    hello world [test]; aaa    ");
 
 }
+
