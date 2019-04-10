@@ -1,3 +1,4 @@
+#![allow(non_snake_case)]
 // The CPU
 use crate::virpc::memory;
 use crate::virpc::opcodes;
@@ -77,7 +78,7 @@ impl CPU {
     }
 
     pub fn destroy(&mut self) {
-        //TODO remove data-list
+        self.data.clear();
     }
 
 
@@ -511,6 +512,7 @@ impl CPU {
     }
 
     pub fn get_variables_list() -> Vec<Items> {
+        //include 'libs', global calls, local jumps (since last call, with unmatched ret.)
         let mut litems: Vec<Items> = Vec::new();
         litems.push(CPU::new_Item("register  (0xF000)".to_string(), " ".to_string()));//agree on register range
         litems.push(CPU::new_Item("new const  (code)".to_string(), " ".to_string()));//byte or int
@@ -531,7 +533,7 @@ impl CPU {
     pub fn get_addressing_mode_list(&mut self) -> Vec<ITEM> {
         let mut litems3: Vec<ITEM> = Vec::new();
         litems3.push(new_item("direct".as_bytes(), " ".as_bytes()));
-        litems3.push(new_item("indirect".as_bytes(), " ".as_bytes()));//include 'libs', global calls, local jumps (since last call, with unmatched ret.)
+        litems3.push(new_item("indirect".as_bytes(), " ".as_bytes()));
         litems3
     }
 
