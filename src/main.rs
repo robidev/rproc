@@ -43,7 +43,7 @@ fn main() {
             prg_to_load = args[i].clone();
         }
     }
-
+    
     let mut virpc = virpc::Virpc::new(window_scale, debugger_on, &prg_to_load);
 
     let asmcpu = cpu::CPU::new_shared();

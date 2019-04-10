@@ -43,10 +43,6 @@ impl Windows {
         let mut screen_height = 0;
         let mut screen_width = 0;
 
-        let mut litems1: Vec<ITEM> = Vec::new();
-        let mut litems2: Vec<ITEM> = Vec::new();
-        let mut litems3: Vec<ITEM> = Vec::new();
-
         initscr();
         keypad(stdscr(), true);
         noecho();
@@ -63,6 +59,9 @@ impl Windows {
         let lwin2 = Windows::create_win(" code ",screen_height/2-1, screen_width-WIN1_MAXWIDTH, 1, WIN1_MAXWIDTH);
         let lwin3 = Windows::create_win(" variables - arg 0",screen_height/2, screen_width/2, screen_height/2, 0);
         let lwin4 = Windows::create_win(" addressing mode ",screen_height/2, screen_width/2, screen_height/2, screen_width/2);
+        let mut litems1 = cpu.borrow_mut().get_commands_list();
+        let mut litems2 = cpu.borrow_mut().get_data_list();
+        let mut litems3 =  cpu.borrow_mut().get_addressing_mode_list();
         refresh();//needed for win size
         let lmenu1 = Windows::create_menu(&mut litems1,lwin1,0);
         let lmenu2 = Windows::create_menu(&mut litems2,lwin3,0);
@@ -95,14 +94,6 @@ impl Windows {
         };
 
         _windows.refresh_pad();
-
-        _windows.items1 = _windows.cpu_reader.borrow_mut().get_commands_list();
-        _windows.menu1 = Windows::update_menu(_windows.win1, _windows.menu1, &mut _windows.items1,0);
-        _windows.items2 = _windows.cpu_reader.borrow_mut().get_data_list();
-        _windows.menu2 = Windows::update_menu(_windows.win3, _windows.menu2, &mut _windows.items2,0);
-        _windows.items3 =  _windows.cpu_reader.borrow_mut().get_addressing_mode_list();
-        _windows.menu3 = Windows::update_menu(_windows.win4, _windows.menu3, &mut _windows.items3,0);
-
         _windows
     }
     pub fn resize_check(&mut self) {
@@ -158,20 +149,6 @@ impl Windows {
         delwin(win);
     }
 
-    fn delete_menu(menu : MENU, items : &mut Vec<ITEM>)
-    {
-        let sub = menu_sub(menu);
-        unpost_menu(menu);
-        delwin(sub);
-
-        /* free items */
-        for &item in items.iter() {
-            free_item(item);
-        }
-
-        free_menu(menu);
-    }
-
     pub fn refresh_pad(&mut self) {
         let mut lpc = 0;
 
@@ -188,17 +165,21 @@ impl Windows {
             if i == self.edit_pc {
                 wattrset(self.win2_sub, COLOR_PAIR(2));
                 
-                self.items1 = Windows::update_list(&mut self.items1,&mut self.cpu_reader.borrow_mut().get_commands_list());
+                Windows::delete_menu(self.menu1, &mut self.items1);
+                self.items1 = self.cpu_reader.borrow_mut().get_commands_list();//Windows::update_list(&mut self.items1,&mut self.cpu_reader.borrow_mut().get_commands_list());
                 self.menu1_choice = self.cpu_reader.borrow_mut().get_instruction_index();
-                self.menu1 = Windows::update_menu(self.win1, self.menu1, &mut self.items1,self.menu1_choice);
+                self.menu1 = Windows::create_menu(&mut self.items1, self.win1, self.menu1_choice);
+                //self.menu1 = Windows::update_menu( self.menu1, &mut self.items1,);
 
-                self.items2 = Windows::update_list(&mut self.items2,&mut self.cpu_reader.borrow_mut().get_data_list());
+                Windows::delete_menu(self.menu2, &mut self.items2);
+                self.items2 = self.cpu_reader.borrow_mut().get_data_list();//Windows::update_list(&mut self.items2,&mut self.cpu_reader.borrow_mut().get_data_list());
                 self.menu2_choice = self.cpu_reader.borrow_mut().instruction.arg_index[self.cur_arg as usize];
-                self.menu2 = Windows::update_menu(self.win3, self.menu2, &mut self.items2,self.menu2_choice);
+                self.menu2 = Windows::create_menu(&mut self.items2 ,self.win3, self.menu2_choice);
+                //self.menu2 = Windows::update_menu(self.win3, self.menu2, &mut self.items2,self.menu2_choice);
 
-                self.items3 = Windows::update_list(&mut self.items3,&mut self.cpu_reader.borrow_mut().get_addressing_mode_list());
-                self.menu3_choice = self.cpu_reader.borrow_mut().argument_type(self.cur_arg);
-                self.menu3 = Windows::update_menu(self.win4, self.menu3, &mut self.items3,self.menu3_choice);
+                //self.items3 = Windows::update_list(&mut self.items3,&mut self.cpu_reader.borrow_mut().get_addressing_mode_list());
+                //self.menu3_choice = self.cpu_reader.borrow_mut().argument_type(self.cur_arg);
+                //self.menu3 = Windows::update_menu(self.win4, self.menu3, &mut self.items3,self.menu3_choice);
             }
             if i >= end - ((self.screen_height/2-3) as u32) {
                 wprintw(self.win2_sub, self.cpu_reader.borrow_mut().instruction_to_text().as_str());
@@ -214,19 +195,6 @@ impl Windows {
         mvwprintw(win,0,1,s);
         wrefresh(win);
         win
-    }
-
-    fn update_list(items : &mut Vec<ITEM>, new_items : &mut Vec<ITEM>) -> Vec<ITEM> {
-        /* free items */
-        for &ditem in items.iter() {
-            free_item(ditem);
-        }
-        let mut lvec : Vec<ITEM> = Vec::new();
-        for &nitem in new_items.iter() {
-            
-            lvec.push(new_item(item_name(nitem), item_description(nitem)));
-        }
-        lvec
     }
 
     fn update(&mut self) {
@@ -267,11 +235,27 @@ impl Windows {
         wrefresh(self.win3);
         wrefresh(self.win4);
 
-        self.menu1 = Windows::update_menu(self.win1, self.menu1, &mut self.items1, self.menu1_choice);
-        self.menu2 = Windows::update_menu(self.win3, self.menu2, &mut self.items2, self.menu2_choice);
-        self.menu3 = Windows::update_menu(self.win4, self.menu3, &mut self.items3, self.menu3_choice);
+        //self.menu1 = Windows::update_menu(self.win1, self.menu1, &mut self.items1, self.menu1_choice);
+        //self.menu2 = Windows::update_menu(self.win3, self.menu2, &mut self.items2, self.menu2_choice);
+        //self.menu3 = Windows::update_menu(self.win4, self.menu3, &mut self.items3, self.menu3_choice);
 
         self.refresh_pad();
+    }
+
+    fn update_list(items : &mut Vec<ITEM>, new_items : &mut Vec<ITEM>) -> Vec<ITEM> {
+        /* free items */
+        for &ditem in items.iter() {
+            free_item(ditem);
+        }
+        items.clear();
+        drop(items);
+
+        let mut lvec : Vec<ITEM> = Vec::new();
+        for &nitem in new_items.iter() {
+            
+            lvec.push(new_item(item_name(nitem), item_description(nitem)));
+        }
+        lvec
     }
 
     pub fn create_menu(items : &mut Vec<ITEM>, win : WINDOW, index : u32) -> MENU {
@@ -293,15 +277,20 @@ impl Windows {
         menu
     }
 
-    pub fn update_menu(win : WINDOW, menu: MENU, items : &mut Vec<ITEM>, index : u32) -> MENU{
-                /* Crate menu */
-        let sub = menu_sub(menu);
+    fn delete_menu(menu : MENU, items : &mut Vec<ITEM>)
+    {
         unpost_menu(menu);
-        delwin(sub);
+        /* free items */
+        for &item in items.iter() {
+            free_item(item);
+        }
+        delwin(menu_sub(menu));
         free_menu(menu);
-        Windows::create_menu(items, win, index)
+        drop(menu);
+        //clear/drop should be after free
+        items.clear();
+        drop(items);
     }
-
     //
     // key event handler
     //
