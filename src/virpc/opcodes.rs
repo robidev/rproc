@@ -103,15 +103,15 @@ pub fn run(cpu: &mut cpu::CPU) -> bool {
                 7 => { if !cpu.get_status_flag(cpu::StatusFlag::Overflow) { cpu.pc = cpu.instruction.arg[0]; } },
                 8 => { if !cpu.get_status_flag(cpu::StatusFlag::Negative) { cpu.pc = cpu.instruction.arg[0]; } },
 
-                9 => { if cpu.get_status_flag(cpu::StatusFlag::Carry) { cpu.pc = (cpu.pc as i32 + cpu.instruction.arg[0] as i32) as u32; } },
-                10 => { if cpu.get_status_flag(cpu::StatusFlag::Zero ) { cpu.pc = (cpu.pc as i32 + cpu.instruction.arg[0] as i32) as u32; } },
-                11 => { if cpu.get_status_flag(cpu::StatusFlag::Overflow) { cpu.pc = (cpu.pc as i32 + cpu.instruction.arg[0] as i32) as u32; } },
-                12 => { if cpu.get_status_flag(cpu::StatusFlag::Negative) { cpu.pc = (cpu.pc as i32 + cpu.instruction.arg[0] as i32) as u32; } },
+                9 => { if cpu.get_status_flag(cpu::StatusFlag::Carry) { cpu.pc = (cpu.prev_pc as i32 + cpu.instruction.arg[0] as i32) as u32; } },
+                10 => { if cpu.get_status_flag(cpu::StatusFlag::Zero ) { cpu.pc = (cpu.prev_pc as i32 + cpu.instruction.arg[0] as i32) as u32; } },
+                11 => { if cpu.get_status_flag(cpu::StatusFlag::Overflow) { cpu.pc = (cpu.prev_pc as i32 + cpu.instruction.arg[0] as i32) as u32; } },
+                12 => { if cpu.get_status_flag(cpu::StatusFlag::Negative) { cpu.pc = (cpu.prev_pc as i32 + cpu.instruction.arg[0] as i32) as u32; } },
 
-                13 => { if !cpu.get_status_flag(cpu::StatusFlag::Carry) { cpu.pc = (cpu.pc as i32 + cpu.instruction.arg[0] as i32) as u32; } },
-                14 => { if !cpu.get_status_flag(cpu::StatusFlag::Zero ) { cpu.pc = (cpu.pc as i32 + cpu.instruction.arg[0] as i32) as u32; } },
-                15 => { if !cpu.get_status_flag(cpu::StatusFlag::Overflow) { cpu.pc = (cpu.pc as i32 + cpu.instruction.arg[0] as i32) as u32; } },
-                16 => { if !cpu.get_status_flag(cpu::StatusFlag::Negative) { cpu.pc = (cpu.pc as i32 + cpu.instruction.arg[0] as i32) as u32; } },
+                13 => { if !cpu.get_status_flag(cpu::StatusFlag::Carry) { cpu.pc = (cpu.prev_pc as i32 + cpu.instruction.arg[0] as i32) as u32; } },
+                14 => { if !cpu.get_status_flag(cpu::StatusFlag::Zero ) { cpu.pc = (cpu.prev_pc as i32 + cpu.instruction.arg[0] as i32) as u32; } },
+                15 => { if !cpu.get_status_flag(cpu::StatusFlag::Overflow) { cpu.pc = (cpu.prev_pc as i32 + cpu.instruction.arg[0] as i32) as u32; } },
+                16 => { if !cpu.get_status_flag(cpu::StatusFlag::Negative) { cpu.pc = (cpu.prev_pc as i32 + cpu.instruction.arg[0] as i32) as u32; } },
 
                 17 => { cpu.pc = (cpu.pc as i32 + cpu.instruction.arg[0] as i32) as u32; },
                 _ => cpu.pc = cpu.instruction.arg[0],

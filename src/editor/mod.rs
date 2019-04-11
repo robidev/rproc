@@ -205,25 +205,25 @@ impl Windows {
             0 => {
                 mvwprintw(self.win1,0,1,"<commands>");
                 mvwprintw(self.win2,0,1," code ");
-                mvwprintw(self.win3,0,1,format!(" variables  - arg {}",self.cur_arg).as_str());
+                mvwprintw(self.win3,0,1,format!(" variables  - arg {} ",self.cur_arg).as_str());
                 mvwprintw(self.win4,0,1," addressing mode ");
             }
             1 => {
                 mvwprintw(self.win1,0,1," commands ");
                 mvwprintw(self.win2,0,1,"<code>");
-                mvwprintw(self.win3,0,1,format!(" variables  - arg {}",self.cur_arg).as_str());
+                mvwprintw(self.win3,0,1,format!(" variables  - arg {} ",self.cur_arg).as_str());
                 mvwprintw(self.win4,0,1," addressing mode ");
             }
             2 => {
                 mvwprintw(self.win1,0,1," commands ");
                 mvwprintw(self.win2,0,1," code ");
-                mvwprintw(self.win3,0,1,format!("<variables> - arg {}",self.cur_arg).as_str());
+                mvwprintw(self.win3,0,1,format!("<variables> - arg {} ",self.cur_arg).as_str());
                 mvwprintw(self.win4,0,1," addressing mode ");
             }
             3 => {
                 mvwprintw(self.win1,0,1," commands ");
                 mvwprintw(self.win2,0,1," code ");
-                mvwprintw(self.win3,0,1,format!(" variables  - arg {}",self.cur_arg).as_str());
+                mvwprintw(self.win3,0,1,format!(" variables  - arg {} ",self.cur_arg).as_str());
                 mvwprintw(self.win4,0,1,"<addressing mode>");
             }
             _ => {

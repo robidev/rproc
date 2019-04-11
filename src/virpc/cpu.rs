@@ -335,7 +335,7 @@ impl CPU {
                         self.instruction.arg_index[0] = index;//index of arg in list
                     }
                     else {
-                        let s = format!("LABEL_{:08X} (pc+{})",self.instruction.arg[0] + self.pc, self.instruction.arg[0]);
+                        let s = format!("LABEL_{:08X} (pc+{})",self.instruction.arg[0] + self.prev_pc, self.instruction.arg[0]);
                         let index = CPU::add_new_item(&mut self.data, CPU::new_Item(s, d,self.instruction.arg[0]) );
                         self.instruction.arg_index[0] = index;//index of arg in list
                     }
