@@ -58,12 +58,12 @@ impl Windows {
 
         refresh();//needed for screen size
         getmaxyx(stdscr(), &mut screen_height, &mut screen_width);
-        let s = format!("edit:{:08X},current:{:08X} <F5 run/pause> <F6 reset> <F9 breakpoint> <F10 step>",0,0);
-        mvprintw(0,0,s.as_str());
-        let lwin1 = Windows::create_win("<commands>",screen_height/2-1, WIN1_MAXWIDTH, 1, 0);
-        let lwin2 = Windows::create_win(" code ",screen_height/2-1, screen_width-WIN1_MAXWIDTH, 1, WIN1_MAXWIDTH);
-        let lwin3 = Windows::create_win(" variables - arg 0",screen_height/2, screen_width/2, screen_height/2, 0);
-        let lwin4 = Windows::create_win(" addressing mode ",screen_height/2, screen_width/2, screen_height/2, screen_width/2);
+        //let s = format!("edit:{:08X},current:{:08X} <F5 run/pause> <F6 reset> <F9 breakpoint> <F10 step>",0,0);
+        //mvprintw(0,0,s.as_str());
+        let lwin1 = newwin(screen_height/2-1, WIN1_MAXWIDTH, 1, 0);
+        let lwin2 = newwin(screen_height/2-1, screen_width-WIN1_MAXWIDTH, 1, WIN1_MAXWIDTH);
+        let lwin3 = newwin(screen_height/2, screen_width/2, screen_height/2, 0);
+        let lwin4 = newwin(screen_height/2, screen_width/2, screen_height/2, screen_width/2);
         let mut litems1 = cpu.borrow_mut().get_commands_list();
         let mut litems2 = cpu.borrow_mut().get_data_list();
         let mut litems3 =  cpu.borrow_mut().get_addressing_mode_list();
@@ -71,7 +71,7 @@ impl Windows {
         let lmenu1 = Windows::create_menu(&mut litems1,lwin1,0);
         let lmenu2 = Windows::create_menu(&mut litems2,lwin3,0);
         let lmenu3 = Windows::create_menu(&mut litems3,lwin4,0);
-
+        
         let mut _windows = Windows {
             menu1 : lmenu1,
             menu2 : lmenu2,
@@ -84,8 +84,8 @@ impl Windows {
             win2 : lwin2,
             win3 : lwin3,
             win4 : lwin4,
-            screen_height : screen_height,
-            screen_width : screen_width,
+            screen_height : 0,
+            screen_width : 0,
             screen_height_n : 0,
             screen_width_n : 0,
             focus : 0,
@@ -102,7 +102,7 @@ impl Windows {
             edit_mode : vec![-1; 3],
         };
 
-        _windows.refresh_pad();
+        _windows.resize_check();
         _windows
     }
 
@@ -203,14 +203,14 @@ impl Windows {
         mvprintw(0,0,s.as_str());
         match self.focus {
             0 => {
-                mvwprintw(self.win1,0,1,"<commands>");
-                mvwprintw(self.win2,0,1," code ");
+                mvwprintw(self.win1,0,1," commands ");
+                mvwprintw(self.win2,0,1,"<code>");
                 mvwprintw(self.win3,0,1,format!(" variables  - arg {} ",self.cur_arg).as_str());
                 mvwprintw(self.win4,0,1," addressing mode ");
             }
             1 => {
-                mvwprintw(self.win1,0,1," commands ");
-                mvwprintw(self.win2,0,1,"<code>");
+                mvwprintw(self.win1,0,1,"<commands>");
+                mvwprintw(self.win2,0,1," code ");
                 mvwprintw(self.win3,0,1,format!(" variables  - arg {} ",self.cur_arg).as_str());
                 mvwprintw(self.win4,0,1," addressing mode ");
             }
@@ -237,6 +237,18 @@ impl Windows {
         wrefresh(self.win4);
 
         self.refresh_pad();
+
+        Windows::delete_menu(self.menu1, &mut self.items1);
+        self.items1 = self.cpu_reader.borrow_mut().get_commands_list();
+        self.menu1 = Windows::create_menu(&mut self.items1, self.win1, self.menu1_choice);
+
+        Windows::delete_menu(self.menu2, &mut self.items2);
+        self.items2 = self.cpu_reader.borrow_mut().get_data_list();
+        self.menu2 = Windows::create_menu(&mut self.items2 ,self.win3, self.menu2_choice);
+
+        Windows::delete_menu(self.menu3, &mut self.items3);
+        self.items3 = self.cpu_reader.borrow_mut().get_addressing_mode_list();
+        self.menu3 = Windows::create_menu(&mut self.items3, self.win4, self.menu3_choice);
     }
 
     fn refresh_pad(&mut self) {
@@ -261,38 +273,27 @@ impl Windows {
                 wattrset(self.win2_sub, COLOR_PAIR(2));
 
                 self.edit_pc = lpc;
-                //menu1
-                if self.edit_cmd == -1 {
+                
+                if self.edit_cmd == -1 {//menu1
                     self.menu1_choice = self.cpu_reader.borrow_mut().get_instruction_index();
                 }
                 else {
                         self.menu1_choice = self.edit_cmd as u32;
                 }
-                Windows::delete_menu(self.menu1, &mut self.items1);
-                self.items1 = self.cpu_reader.borrow_mut().get_commands_list();
-                self.menu1 = Windows::create_menu(&mut self.items1, self.win1, self.menu1_choice);
-
-                //menu2
-                if self.edit_item[self.cur_arg as usize] == -1 {
+                
+                if self.edit_item[self.cur_arg as usize] == -1 {//menu2
                     self.menu2_choice = self.cpu_reader.borrow_mut().instruction.arg_index[self.cur_arg as usize];
                 }
                 else {
                     self.menu2_choice = self.edit_item[self.cur_arg as usize] as u32;
                 }
-                Windows::delete_menu(self.menu2, &mut self.items2);
-                self.items2 = self.cpu_reader.borrow_mut().get_data_list();
-                self.menu2 = Windows::create_menu(&mut self.items2 ,self.win3, self.menu2_choice);
-
-                //menu3
-                if self.edit_mode[self.cur_arg as usize] == -1 {
+                
+                if self.edit_mode[self.cur_arg as usize] == -1 {//menu3
                     self.menu3_choice = self.cpu_reader.borrow_mut().argument_type(self.cur_arg);
                 }
                 else {
                     self.menu3_choice = self.edit_mode[self.cur_arg as usize] as u32;
                 }
-                Windows::delete_menu(self.menu3, &mut self.items3);
-                self.items3 = self.cpu_reader.borrow_mut().get_addressing_mode_list();
-                self.menu3 = Windows::create_menu(&mut self.items3, self.win4, self.menu3_choice);
             }
             if i >= end - ((self.screen_height/2-3) as u32) {
                 wprintw(self.win2_sub, self.cpu_reader.borrow_mut().instruction_to_text().as_str());
@@ -318,28 +319,116 @@ impl Windows {
 
     fn new_val(&mut self) {
         //menu for a new value based on argument-index (self.cur_arg) 
+        //new window, asking to input a value
+        let mut screen_height = 0;
+        let mut screen_width = 0;
+        getmaxyx(stdscr(), &mut screen_height, &mut screen_width);
+        let lwin_menu = Windows::create_win(" ",screen_height/2, screen_width/2, screen_height/4, screen_width/4);
+
+        let s;
+        let v;
+        let d = " ".to_string();
+
         //and opcode: edit_cmd or (self.cpu_reader.borrow_mut().instruction_u8)
-        let code : u8;
+        let mut code : u8;
         if self.edit_cmd != -1 { code = self.edit_cmd as u8; }
-        else {code = self.cpu_reader.borrow_mut().instruction_u8; }
-        match code {
-            _ => {
+        else { code = self.cpu_reader.borrow_mut().instruction_u8 >> 4; }
+        code &= 0x0f;
+
+        match self.edit_item[self.cur_arg as usize] {
+            0 => {
+                mvwprintw(lwin_menu,0,1," select register ");
+                let mut items = self.cpu_reader.borrow_mut().reg_opts();
+                let mut select :i32 = 0;
+                let menu = Windows::create_menu(&mut items,lwin_menu,select as u32);
+                wrefresh(lwin_menu);
+                let mut ch = getch();
+                while ch != 27 as i32 { // ESC pressed, so quit
+                    match ch {
+                        KEY_UP => {
+                            menu_driver(menu, REQ_UP_ITEM);
+                            wrefresh(lwin_menu);
+                        }
+                        KEY_DOWN => {
+                            menu_driver(menu, REQ_DOWN_ITEM);
+                            wrefresh(lwin_menu);
+                        }
+                        0xa => {
+                            select = item_index(current_item(menu));
+                            s = format!("REG_{}",select);
+                            v = ((select * 4)+0xF000) as u32;
+                            //write direct (cur_arg = 0) or indirect (cur_arg = 1)
+                            if self.cur_arg == 0 { self.edit_mode[0] = 0; }
+                            else { self.edit_mode[self.cur_arg as usize] = 1; }
+
+                            self.edit_item[self.cur_arg as usize] = cpu::CPU::add_new_item(&mut self.cpu_reader.borrow_mut().data, cpu::CPU::new_Item(s, d, v) ) as i32;
+                            self.modify();
+                            break;
+                        }
+                        _ => {}
+                    }
+                    ch = getch();
+                }
+                Windows::delete_menu(menu,&mut items);
+            }
+            1 if self.cur_arg == 1 && code == 0x00 => {//jmp
+                mvwprintw(lwin_menu,0,1," select  jump options ");
+                let mut items = self.cpu_reader.borrow_mut().jmp_opts();
+                let mut select :i32 = 0;
+                let menu = Windows::create_menu(&mut items,lwin_menu,select as u32);
+                //provide menu with all jmp options
                 //use self.edit_item[self.cur_arg as usize] to determine the menu-option
-                //new window, asking to input a value
-                //after enter, store result in data.value in respect to self.cur_arg
+                wrefresh(lwin_menu);
+                let mut ch = getch();
+                while ch != 27 as i32 { // ESC pressed, so quit
+                    match ch {
+                        KEY_UP => {
+                            menu_driver(menu, REQ_UP_ITEM);
+                            wrefresh(lwin_menu);
+                        }
+                        KEY_DOWN => {
+                            menu_driver(menu, REQ_DOWN_ITEM);
+                            wrefresh(lwin_menu);
+                        }
+                        0xa => {
+                            select = item_index(current_item(menu));
+                            s = format!("CONST_{}",select);
+                            v = select as u32;
+                            self.edit_mode[1] = 0;
+                            self.edit_item[self.cur_arg as usize] = cpu::CPU::add_new_item(&mut self.cpu_reader.borrow_mut().data, cpu::CPU::new_Item(s, d, v) ) as i32;
+                            self.modify();
+                            break;
+                        }
+                        _ => {}
+                    }
+                    ch = getch();
+                }
+                Windows::delete_menu(menu,&mut items);
+            }
+            1 if self.cur_arg == 1 && code == 0x01 => {//call
+            }
+            2 if self.cur_arg == 1 && code == 0x0a  => {//ldr
                 //edit cpu-arg and opcode if necesary
                 //self.edit_cmd, self.edit_mode[0], self.edit_mode[1], self.edit_mode[2]
+            }
+            2 if self.cur_arg == 2 && code == 0x0a=> {//ldr
+            }
+            2 if self.cur_arg == 1 && code == 0x0b=> {//str
+            }
+            2 if self.cur_arg == 2 && code == 0x0b=> {//str
+            }
+            _ => {
+                mvwprintw(lwin_menu,1,1," any ");
+                wrefresh(lwin_menu);
+                let mut ch = getch();
+                while ch != 27 as i32 { // ESC pressed, so quit
+                    ch = getch();
+                }
             },
         }
-        //modify data-list,
-        let s = "0x0110".to_string();
-        let d = " ".to_string();
-        let v = 0x0110;
-        self.edit_item[self.cur_arg as usize] = cpu::CPU::add_new_item(&mut self.cpu_reader.borrow_mut().data, cpu::CPU::new_Item(s, d, v) ) as i32;
-        self.modify();
 
+        Windows::destroy_win(lwin_menu);
         self.edit_item[self.cur_arg as usize] = -1;
-        
     }
 
     fn reset_edit(&mut self) {
@@ -370,13 +459,13 @@ impl Windows {
                 else {
                     self.modify();//edit the current value
                 }
-                
-                self.update();//show the edited value
+                self.screen_height = 0;//trigger an update
+                self.resize_check();//show the edited value
             }
             _ => {
                 match self.focus {
-                    0 => self.handle_keys_win1(ch),
-                    1 => self.handle_keys_win2(ch),
+                    0 => self.handle_keys_win2(ch),
+                    1 => self.handle_keys_win1(ch),
                     2 => self.handle_keys_win3(ch),
                     3 => self.handle_keys_win4(ch),
                     _ => {},
@@ -408,12 +497,12 @@ impl Windows {
                    self.edit_line -= 1; 
                 }
                 self.reset_edit();
-                self.refresh_pad();
+                self.update();
             }
             KEY_DOWN => {
                 self.edit_line += 1;
                 self.reset_edit();
-                self.refresh_pad();
+                self.update();
             }
             _ => {}
         }

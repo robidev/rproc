@@ -21,10 +21,10 @@ pub const MEMORY: u32 = 0x00010000;
 pub const STACK: u32 = 0x00080000;
 
 pub const PC_REG: u32 = 0xF000;
-pub const STACK_REG: u32 = 0xF001;
-pub const A_REG: u32 = 0xF002;
-pub const B_REG: u32 = 0xF003;
-pub const C_REG: u32 = 0xF004;
+pub const STACK_REG: u32 = 0xF004;
+pub const A_REG: u32 = 0xF008;
+pub const B_REG: u32 = 0xF00B;
+pub const C_REG: u32 = 0xF010;
 
 // status flags for P register
 pub enum StatusFlag {
@@ -529,9 +529,9 @@ impl CPU {
         //include 'libs', global calls, local jumps (since last call, with unmatched ret.)
         let mut litems: Vec<Items> = Vec::new();
         litems.push(CPU::new_Item("register  (0xF000)".to_string(), " ".to_string(),0));//agree on register range
-        litems.push(CPU::new_Item("new const  (code)".to_string(), " ".to_string(),0));//byte or int
-        litems.push(CPU::new_Item("new local  (stack 0x0000FFFF)".to_string(), " ".to_string(),0));//agree on stack origin (since last call, with unmatched ret.)
-        litems.push(CPU::new_Item("new global (heap 0x00010000)".to_string(), " ".to_string(),0));//agree on heap origin
+        litems.push(CPU::new_Item("new const  (code)".to_string(), " ".to_string(),0));//allocate byte or int in code
+        litems.push(CPU::new_Item("new var stack/heap  (0x0000FFFF/0x00010000)".to_string(), " ".to_string(),0));//agree on stack origin (since last call, with unmatched ret.)
+        litems.push(CPU::new_Item("new bss  (0xE000)".to_string(), " ".to_string(),0));//allocate static data in bss(memory location)
         litems.push(CPU::new_Item("-existing-".to_string(), " ".to_string(),0));
         litems
     }
@@ -577,6 +577,45 @@ impl CPU {
         litems1.push(new_item("iSTR".as_bytes(), "(int) Store a=[b], dec c".as_bytes()));
         litems1.push(new_item("iNOT".as_bytes(), "(int) Not a != b".as_bytes()));
         litems1.push(new_item("iCMP".as_bytes(), "(int) Compare a?b, c=?".as_bytes()));
+        litems1
+    }
+
+    pub fn jmp_opts(&mut self) -> Vec<ITEM> {
+        let mut litems1: Vec<ITEM> = Vec::new();
+        litems1.push(new_item("0 => unconditional jump"," "));
+        litems1.push(new_item("1 => StatusFlag::Carry=1"," "));
+        litems1.push(new_item("2 => StatusFlag::Zero=1"," "));
+        litems1.push(new_item("3 => StatusFlag::Overflow=1"," "));
+        litems1.push(new_item("4 => StatusFlag::Negative=1"," "));
+
+        litems1.push(new_item("5 => StatusFlag::Carry=0"," "));
+        litems1.push(new_item("6 => StatusFlag::Zero=0"," "));
+        litems1.push(new_item("7 => StatusFlag::Overflow=0"," "));
+        litems1.push(new_item("8 => StatusFlag::Negative=0"," "));
+
+        litems1.push(new_item("9 => StatusFlag::Carry=1, PC relative jump"," "));
+        litems1.push(new_item("10 => StatusFlag::Zero=1, PC relative jump"," "));
+        litems1.push(new_item("11 => StatusFlag::Overflow=1, PC relative jump"," "));
+        litems1.push(new_item("12 => StatusFlag::Negative=1, PC relative jump"," "));
+
+        litems1.push(new_item("13 => StatusFlag::Carry=0, PC relative jump"," "));
+        litems1.push(new_item("14 => StatusFlag::Zero=0, PC relative jump"," "));
+        litems1.push(new_item("15 => StatusFlag::Overflow=0, PC relative jump"," "));
+        litems1.push(new_item("16 => StatusFlag::Negative=0, PC relative jump"," "));
+        litems1
+    }
+
+    pub fn reg_opts(&mut self) -> Vec<ITEM> {
+        let mut litems1: Vec<ITEM> = Vec::new();
+        litems1.push(new_item("0 => pc (0xF000)"," "));
+        litems1.push(new_item("1 => stack (0xF004)"," "));
+        for i in 0..100 {
+            let s = format!("{} => reg{} ({:08X})",i+2,i,(i*4)+0xf008 );
+            litems1.push(new_item(s.to_string()," ".to_string()));
+        }
+        
+
+
         litems1
     }
 

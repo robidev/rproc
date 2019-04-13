@@ -65,6 +65,5 @@ fn main() {
     _windows.destroy();
 
     //asmcpu.borrow_mut().text_to_instruction("    hello world [test]; aaa    ");
-
 }
 

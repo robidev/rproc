@@ -550,7 +550,6 @@ pub fn get_opcode(cpu: &mut cpu::CPU) -> u8 {
         op_val
 }
 
-
 pub fn push_operand_addr(cpu: &mut cpu::CPU) -> bool {
     for arg_i in 0..cpu.instruction.size {
         match cpu.instruction.addressing_type {
