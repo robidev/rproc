@@ -6,10 +6,27 @@ static COLOR_FOREGROUND: i16 = 17;
 static COLOR_KEYWORD: i16 = 18;
 static COLOR_PAIR_DEFAULT: i16 = 1;
 static COLOR_PAIR_KEYWORD: i16 = 2;
+static MEMORY_SIZE: u32 = 0x080000;
 
-static WIN1_MAXWIDTH : i32 = 35;
-static WIN12_HEIGHT : u32 = 25;
-static WIN3_MAXWIDTH : u32 = 30;
+static EBCDIC: [char;256] = [
+    /* 0   1   2   3   4   5   6   7   8   9   A   B   C   D    E   F */
+      '.','.','.','.','.','.','.','.','.','.','.','.','.','.' ,'.','.', /* 0 */
+      '.','.','.','.','.','.','.','.','.','.','.','.','.','.' ,'.','.', /* 1 */
+      '.','.','.','.','.','.','.','.','.','.','.','.','.','.' ,'.','.', /* 2 */
+      '.','.','.','.','.','.','.','.','.','.','.','.','.','.' ,'.','.', /* 3 */
+      ' ','.','.','.','.','.','.','.','.','.','.','.','<','(' ,'+','|', /* 4 */
+      '&','.','.','.','.','.','.','.','.','.','!','$','*',')' ,';','.', /* 5 */
+      '-','/','.','.','.','.','.','.','.','.','.',',','%','_' ,'>','?', /* 6 */
+      '.','.','.','.','.','.','.','.','.','.',':','#','@','\'','=','"', /* 7 */
+      '.','a','b','c','d','e','f','g','h','i','.','.','.','.' ,'.','.', /* 8 */
+      '.','.','j','k','l','m','n','o','p','q','.','.','.','.' ,'.','.', /* 9 */
+      '.','r','s','t','u','v','w','x','y','z','.','.','.','.' ,'.','.', /* A */
+      '.','.','.','.','.','.','.','.','.','`','.','.','.','.' ,'.','.', /* B */
+      '.','A','B','C','D','E','F','G','H','I','.','.','.','.' ,'.','.', /* C */
+      '.','.','J','K','L','M','N','O','P','Q','.','.','.','.' ,'.','.', /* D */
+      '.','R','S','T','U','V','W','X','Y','Z','.','.','.','.' ,'.','.', /* E */
+      '0','1','2','3','4','5','6','7','8','9','.','.','.','.' ,'.','.' ];/* F */
+
 
 pub struct Windows {
     items1 : Vec<ITEM>,
@@ -23,6 +40,7 @@ pub struct Windows {
     win2 : WINDOW,
     win3 : WINDOW,
     win4 : WINDOW,
+    win5 : WINDOW,
     screen_height : i32,
     screen_width : i32,
     screen_height_n : i32,
@@ -35,55 +53,29 @@ pub struct Windows {
     menu2_choice : u32,
     menu3_choice : u32,
     cpu_reader : cpu::CPUShared,
-
     cur_arg : u32,
     edit_cmd : i32,
     edit_item : Vec<i32>,
     edit_mode : Vec<i32>,
+    mem_address : u32,
 }
 
 impl Windows {
     pub fn new(cpu : cpu::CPUShared) -> Windows {
 
-        let mut screen_height = 0;
-        let mut screen_width = 0;
-
-        initscr();
-        keypad(stdscr(), true);
-        noecho();
-        curs_set(CURSOR_VISIBILITY::CURSOR_INVISIBLE);
-        start_color();
-        init_pair(COLOR_PAIR_DEFAULT, COLOR_WHITE, COLOR_BLACK);
-        init_pair(COLOR_PAIR_KEYWORD, COLOR_BLACK, COLOR_WHITE);
-
-        refresh();//needed for screen size
-        getmaxyx(stdscr(), &mut screen_height, &mut screen_width);
-        //let s = format!("edit:{:08X},current:{:08X} <F5 run/pause> <F6 reset> <F9 breakpoint> <F10 step>",0,0);
-        //mvprintw(0,0,s.as_str());
-        let lwin1 = newwin(screen_height/2-1, WIN1_MAXWIDTH, 1, 0);
-        let lwin2 = newwin(screen_height/2-1, screen_width-WIN1_MAXWIDTH, 1, WIN1_MAXWIDTH);
-        let lwin3 = newwin(screen_height/2, screen_width/2, screen_height/2, 0);
-        let lwin4 = newwin(screen_height/2, screen_width/2, screen_height/2, screen_width/2);
-        let mut litems1 = cpu.borrow_mut().get_commands_list();
-        let mut litems2 = cpu.borrow_mut().get_data_list();
-        let mut litems3 =  cpu.borrow_mut().get_addressing_mode_list();
-        refresh();//needed for win size
-        let lmenu1 = Windows::create_menu(&mut litems1,lwin1,0);
-        let lmenu2 = Windows::create_menu(&mut litems2,lwin3,0);
-        let lmenu3 = Windows::create_menu(&mut litems3,lwin4,0);
-        
-        let mut _windows = Windows {
-            menu1 : lmenu1,
-            menu2 : lmenu2,
-            menu3 : lmenu3,
-            items1 : litems1,
-            items2 : litems2,
-            items3 : litems3,
-            win2_sub: derwin(lwin2,screen_height/2-3,screen_width-WIN1_MAXWIDTH-2,1,1),
-            win1 : lwin1,
-            win2 : lwin2,
-            win3 : lwin3,
-            win4 : lwin4,
+        let mut win = Windows {
+            menu1 : 0 as MENU,
+            menu2 : 0 as MENU,
+            menu3 : 0 as MENU,
+            items1 : Vec::new(),
+            items2 : Vec::new(),
+            items3 : Vec::new(),
+            win2_sub: 0 as WINDOW,
+            win1 : 0 as WINDOW,
+            win2 : 0 as WINDOW,
+            win3 : 0 as WINDOW,
+            win4 : 0 as WINDOW,
+            win5 : 0 as WINDOW,
             screen_height : 0,
             screen_width : 0,
             screen_height_n : 0,
@@ -100,24 +92,123 @@ impl Windows {
             edit_cmd : -1,
             edit_item : vec![-1; 3],
             edit_mode : vec![-1; 3],
+            mem_address : 0,
         };
 
-        _windows.resize_check();
-        _windows
+        initscr();
+        keypad(stdscr(), true);
+        noecho();
+        curs_set(CURSOR_VISIBILITY::CURSOR_INVISIBLE);
+        start_color();
+        init_pair(COLOR_PAIR_DEFAULT, COLOR_WHITE, COLOR_BLACK);
+        init_pair(COLOR_PAIR_KEYWORD, COLOR_BLACK, COLOR_WHITE);
+
+        refresh();//needed for screen size
+        getmaxyx(stdscr(), &mut win.screen_height, &mut win.screen_width);
+
+        win.win1 = newwin(win.wd(1,'h'), win.wd(1,'w'), win.wd(1,'y'), win.wd(1,'x'));
+        win.win2 = newwin(win.wd(2,'h'), win.wd(2,'w'), win.wd(2,'y'), win.wd(2,'x'));
+        win.win3 = newwin(win.wd(3,'h'), win.wd(3,'w'), win.wd(3,'y'), win.wd(3,'x'));
+        win.win4 = newwin(win.wd(4,'h'), win.wd(4,'w'), win.wd(4,'y'), win.wd(4,'x'));
+        win.win2_sub = derwin(win.win2,win.wd(2,'h')-2,win.wd(2,'w')-2,1,1);
+        win.win5 = newwin(win.wd(5,'h'), win.wd(5,'w'), win.wd(5,'y'), win.wd(5,'x'));
+
+        win.items1 = win.cpu_reader.borrow_mut().get_commands_list();
+        win.items2 = win.cpu_reader.borrow_mut().get_data_list();
+        win.items3 = win.cpu_reader.borrow_mut().get_addressing_mode_list();
+        refresh();//needed for win size
+        win.menu1 = Windows::create_menu(&mut win.items1,win.win1,0);
+        win.menu2 = Windows::create_menu(&mut win.items2,win.win3,0);
+        win.menu3 = Windows::create_menu(&mut win.items3,win.win4,0);
+        
+        win.screen_height = 0;
+        win.screen_width = 0;
+        win.resize_check();
+        win
     }
 
     pub fn destroy(&mut self)
     {
-        Windows::delete_menu(self.menu1,&mut self.items1);
-        Windows::delete_menu(self.menu2,&mut self.items2);
-        Windows::delete_menu(self.menu3,&mut self.items3);
+        Windows::destroy_menu(self.menu1,&mut self.items1);
+        Windows::destroy_menu(self.menu2,&mut self.items2);
+        Windows::destroy_menu(self.menu3,&mut self.items3);
         Windows::destroy_win(self.win2_sub);
         Windows::destroy_win(self.win1);
         Windows::destroy_win(self.win2);
         Windows::destroy_win(self.win3);
         Windows::destroy_win(self.win4);
+        Windows::destroy_win(self.win5);
         clear();
         endwin();
+    }
+
+    fn wd (&mut self, window : u32, dimension : char) -> i32 {
+        let sh = self.screen_height;
+        let sw = self.screen_width;
+        static WIN1_MAXWIDTH : i32 = 35;
+        static WIN4_HEIGHT : i32 = 4;
+        //static WIN12_HEIGHT : u32 = 25;
+        //static WIN3_MAXWIDTH : u32 = 30;
+
+        match window {
+            1 => {
+                match dimension {
+                    'y' => { 1 },
+                    'x' => { 0 },
+                    'h' => { (sh/2)-1 },
+                    'w' => { WIN1_MAXWIDTH },
+                    'u' => { sh/2 },//y-end
+                    'v' => { WIN1_MAXWIDTH },//x-end
+                    _ => { panic!("dimension index not defined") },
+                }
+            }
+            2 => {
+                match dimension {
+                    'y' => { 1 }, 
+                    'x' => { WIN1_MAXWIDTH },
+                    'h' => { (sh/2)-1 },
+                    'w' => { sw-WIN1_MAXWIDTH },
+                    'u' => { sh/2 },
+                    'v' => { sw },
+                    _ => { panic!("dimension index not defined") },
+                }
+            }
+            3 => {
+                match dimension {
+                    'y' => { sh/2 },
+                    'x' => { 0 },
+                    'h' => { sh/2-WIN4_HEIGHT },
+                    'w' => { WIN1_MAXWIDTH },
+                    'u' => { sh-WIN4_HEIGHT },
+                    'v' => { WIN1_MAXWIDTH },
+                    _ => { panic!("dimension index not defined") },
+                }
+            }
+            4 => {
+                match dimension {
+                    'y' => { sh-WIN4_HEIGHT },
+                    'x' => { 0 },
+                    'h' => { WIN4_HEIGHT },
+                    'w' => { WIN1_MAXWIDTH },
+                    'u' => { sh },
+                    'v' => { WIN1_MAXWIDTH },
+                    _ => { panic!("dimension index not defined") },
+                }
+            }
+            5 => {
+                match dimension {
+                    'y' => { sh/2 }, 
+                    'x' => { WIN1_MAXWIDTH },
+                    'h' => { (sh/2) },
+                    'w' => { sw-WIN1_MAXWIDTH },
+                    'u' => { sh },
+                    'v' => { sw },
+                    _ => { panic!("dimension index not defined") },
+                }
+            }
+            _ => { panic!("window index not defined") },
+        }
+
     }
 
     fn create_win(s: &str, h: i32,w: i32,x: i32,y: i32) -> WINDOW {
@@ -149,7 +240,7 @@ impl Windows {
         menu
     }
 
-    fn delete_menu(menu : MENU, items : &mut Vec<ITEM>)
+    fn destroy_menu(menu : MENU, items : &mut Vec<ITEM>)
     {
         unpost_menu(menu);
         for &item in items.iter() {
@@ -172,27 +263,33 @@ impl Windows {
 
             wborder(self.win1, ch, ch, ch, ch, ch, ch, ch, ch);
             wrefresh(self.win1);
-            mvwin(self.win1, 1,0);
-            wresize(self.win1,self.screen_height/2-1, WIN1_MAXWIDTH);
+            mvwin(self.win1, self.wd(1,'y'), self.wd(1,'x'));
+            wresize(self.win1,self.wd(1,'h'), self.wd(1,'w'));
             box_(self.win1,0,0);
             
             wborder(self.win2, ch, ch, ch, ch, ch, ch, ch, ch);
             wrefresh(self.win2);
-            mvwin(self.win2, 1,WIN1_MAXWIDTH);
-            wresize(self.win2,self.screen_height/2-1, self.screen_width-WIN1_MAXWIDTH);
+            mvwin(self.win2, self.wd(2,'y'), self.wd(2,'x'));
+            wresize(self.win2,self.wd(2,'h'), self.wd(2,'w'));
             box_(self.win2,0,0);
             
             wborder(self.win3, ch, ch, ch, ch, ch, ch, ch, ch);
             wrefresh(self.win3);
-            mvwin(self.win3, self.screen_height/2,0);
-            wresize(self.win3,self.screen_height/2, self.screen_width/2);
+            mvwin(self.win3, self.wd(3,'y'), self.wd(3,'x'));
+            wresize(self.win3,self.wd(3,'h'), self.wd(3,'w'));
             box_(self.win3,0,0);
             
             wborder(self.win4, ch, ch, ch, ch, ch, ch, ch, ch);
             wrefresh(self.win4);
-            mvwin(self.win4, self.screen_height/2,self.screen_width/2);
-            wresize(self.win4,self.screen_height/2, self.screen_width/2);
+            mvwin(self.win4, self.wd(4,'y'), self.wd(4,'x'));
+            wresize(self.win4,self.wd(4,'h'), self.wd(4,'w'));
             box_(self.win4,0,0);
+
+            wborder(self.win5, ch, ch, ch, ch, ch, ch, ch, ch);
+            wrefresh(self.win5);
+            mvwin(self.win5, self.wd(5,'y'), self.wd(5,'x'));
+            wresize(self.win5,self.wd(5,'h'), self.wd(5,'w'));
+            box_(self.win5,0,0);
 
             self.update();
         }
@@ -207,24 +304,35 @@ impl Windows {
                 mvwprintw(self.win2,0,1,"<code>");
                 mvwprintw(self.win3,0,1,format!(" variables  - arg {} ",self.cur_arg).as_str());
                 mvwprintw(self.win4,0,1," addressing mode ");
+                mvwprintw(self.win5,0,1," memory view ");
             }
             1 => {
                 mvwprintw(self.win1,0,1,"<commands>");
                 mvwprintw(self.win2,0,1," code ");
                 mvwprintw(self.win3,0,1,format!(" variables  - arg {} ",self.cur_arg).as_str());
                 mvwprintw(self.win4,0,1," addressing mode ");
+                mvwprintw(self.win5,0,1," memory view ");
             }
             2 => {
                 mvwprintw(self.win1,0,1," commands ");
                 mvwprintw(self.win2,0,1," code ");
                 mvwprintw(self.win3,0,1,format!("<variables> - arg {} ",self.cur_arg).as_str());
                 mvwprintw(self.win4,0,1," addressing mode ");
+                mvwprintw(self.win5,0,1," memory view ");
             }
             3 => {
                 mvwprintw(self.win1,0,1," commands ");
                 mvwprintw(self.win2,0,1," code ");
                 mvwprintw(self.win3,0,1,format!(" variables  - arg {} ",self.cur_arg).as_str());
                 mvwprintw(self.win4,0,1,"<addressing mode>");
+                mvwprintw(self.win5,0,1," memory view ");
+            }
+            4 => {
+                mvwprintw(self.win1,0,1," commands ");
+                mvwprintw(self.win2,0,1," code ");
+                mvwprintw(self.win3,0,1,format!(" variables  - arg {} ",self.cur_arg).as_str());
+                mvwprintw(self.win4,0,1," addressing mode ");
+                mvwprintw(self.win5,0,1,"<memory view>");
             }
             _ => {
                 
@@ -238,17 +346,19 @@ impl Windows {
 
         self.refresh_pad();
 
-        Windows::delete_menu(self.menu1, &mut self.items1);
+        Windows::destroy_menu(self.menu1, &mut self.items1);
         self.items1 = self.cpu_reader.borrow_mut().get_commands_list();
         self.menu1 = Windows::create_menu(&mut self.items1, self.win1, self.menu1_choice);
 
-        Windows::delete_menu(self.menu2, &mut self.items2);
+        Windows::destroy_menu(self.menu2, &mut self.items2);
         self.items2 = self.cpu_reader.borrow_mut().get_data_list();
         self.menu2 = Windows::create_menu(&mut self.items2 ,self.win3, self.menu2_choice);
 
-        Windows::delete_menu(self.menu3, &mut self.items3);
+        Windows::destroy_menu(self.menu3, &mut self.items3);
         self.items3 = self.cpu_reader.borrow_mut().get_addressing_mode_list();
         self.menu3 = Windows::create_menu(&mut self.items3, self.win4, self.menu3_choice);
+
+        self.refresh_memview();
     }
 
     fn refresh_pad(&mut self) {
@@ -256,12 +366,12 @@ impl Windows {
         let mut tpc;
 
         let mut end = (self.screen_height/2-3) as u32;
-        if (self.edit_line + (self.screen_height/4-3) as u32) > (self.screen_height/2-3) as u32 {
-            end = self.edit_line + (self.screen_height/4-3) as u32;
+        if (self.edit_line + ((self.wd(2,'h')-2)/2) as u32) > (self.wd(2,'h')-2) as u32 {
+            end = self.edit_line + ((self.wd(2,'h')-2)/2) as u32;
         }
         
         wattrset(self.win2_sub, COLOR_PAIR(1));
-        wresize(self.win2_sub,self.screen_height/2-3, self.screen_width-WIN1_MAXWIDTH-2);
+        wresize(self.win2_sub,self.wd(2,'h')-2, self.wd(2,'w')-2);
         wmove(self.win2_sub,0,0);
 
         self.cpu_reader.borrow_mut().data.clear();
@@ -306,6 +416,30 @@ impl Windows {
         self.cpu_reader.borrow_mut().pc = self.edit_pc;//set pc to current instruction
         //refresh the screen
         wrefresh(self.win2_sub);
+    }
+
+    fn refresh_memview(&mut self) {
+        for i in 0..(self.wd(5,'h')-2) {
+            let mut hex = "".to_string();
+            let mut asci = "".to_string();
+            let w = (self.wd(5,'w')/4)-4;
+            if ( self.mem_address + (i*w) as u32 )  >= MEMORY_SIZE { break; }
+            for j in 0..w {
+                let adr = self.mem_address + ( (i*w) + j ) as u32;
+                let val : u8 = self.cpu_reader.borrow_mut().read_byte(adr);
+                if adr < MEMORY_SIZE {
+                    hex = format!("{} {:02X}",hex,val);
+                    asci = format!("{}{}",asci,EBCDIC[val as usize]);
+                }
+                else {
+                    hex = format!("{}   ",hex);
+                    asci = format!("{} ",asci);
+                }
+            }
+            let s = format!("${:08X} |{} | {}",(i*w),hex,asci);
+            mvwprintw(self.win5,i+1,1,s.as_str());
+        }
+        wrefresh(self.win5);
     }
 
     fn modify(&mut self) {
@@ -365,11 +499,14 @@ impl Windows {
                             self.modify();
                             break;
                         }
-                        _ => {}
+                        _ => {
+                            menu_driver(menu, ch);
+                            wrefresh(lwin_menu);
+                        }
                     }
                     ch = getch();
                 }
-                Windows::delete_menu(menu,&mut items);
+                Windows::destroy_menu(menu,&mut items);
             }
             1 if self.cur_arg == 1 && code == 0x00 => {//jmp
                 mvwprintw(lwin_menu,0,1," select  jump options ");
@@ -399,11 +536,14 @@ impl Windows {
                             self.modify();
                             break;
                         }
-                        _ => {}
+                        _ => {
+                            menu_driver(menu, ch);
+                            wrefresh(lwin_menu);
+                        }
                     }
                     ch = getch();
                 }
-                Windows::delete_menu(menu,&mut items);
+                Windows::destroy_menu(menu,&mut items);
             }
             1 if self.cur_arg == 1 && code == 0x01 => {//call
             }
@@ -418,12 +558,17 @@ impl Windows {
             2 if self.cur_arg == 2 && code == 0x0b=> {//str
             }
             _ => {
-                mvwprintw(lwin_menu,1,1," any ");
+                mvwprintw(lwin_menu,0,1," input a number ");
+                mvwprintw(lwin_menu,2,1," input:");
+                wrefresh(lwin_menu);
+                curs_set(CURSOR_VISIBILITY::CURSOR_VISIBLE);
                 wrefresh(lwin_menu);
                 let mut ch = getch();
                 while ch != 27 as i32 { // ESC pressed, so quit
+                    wechochar(lwin_menu, ch as u64);
                     ch = getch();
                 }
+                curs_set(CURSOR_VISIBILITY::CURSOR_INVISIBLE);
             },
         }
 
@@ -447,7 +592,7 @@ impl Windows {
         match ch {
             0x09 => {
                 self.focus += 1;
-                if self.focus > 3 {
+                if self.focus > 4 {
                     self.focus = 0;
                 }
                 self.update();
@@ -468,6 +613,7 @@ impl Windows {
                     1 => self.handle_keys_win1(ch),
                     2 => self.handle_keys_win3(ch),
                     3 => self.handle_keys_win4(ch),
+                    4 => self.handle_keys_win5(ch),
                     _ => {},
                 };
             }
@@ -486,7 +632,11 @@ impl Windows {
                 wrefresh(self.win1);
                 self.edit_cmd = item_index(current_item(self.menu1));
             }
-            _ => {}
+            _ => {
+                menu_driver(self.menu1, ch);
+                wrefresh(self.win1);
+                self.edit_cmd = item_index(current_item(self.menu1));
+            }
         }
     }
 
@@ -504,7 +654,8 @@ impl Windows {
                 self.reset_edit();
                 self.update();
             }
-            _ => {}
+            _ => {
+            }
         }
     }
 
@@ -532,7 +683,11 @@ impl Windows {
                     self.update();                    
                 }
             }
-            _ => {}
+            _ => {
+                menu_driver(self.menu2, ch);
+                wrefresh(self.win3);
+                self.edit_item[self.cur_arg as usize] = item_index(current_item(self.menu2));
+            }
         }
     }
 
@@ -548,7 +703,34 @@ impl Windows {
                 wrefresh(self.win4);
                 self.edit_mode[self.cur_arg as usize] = item_index(current_item(self.menu3));
             }
-            _ => {}
+            _ => {
+                menu_driver(self.menu3, ch);
+                wrefresh(self.win4);
+                self.edit_mode[self.cur_arg as usize] = item_index(current_item(self.menu3));
+            }
+        }
+    }
+    fn handle_keys_win5(&mut self, ch : i32) {
+        let w = ((self.wd(5,'w')/4)-4) as u32;
+        match ch {
+            KEY_UP => {
+                if self.mem_address >= w {
+                    self.mem_address -= w;
+                }
+                wrefresh(self.win4);
+                self.edit_mode[self.cur_arg as usize] = item_index(current_item(self.menu3));
+            }
+            KEY_DOWN => {
+                if self.mem_address < MEMORY_SIZE-1 {
+                    self.mem_address += w;
+                }
+                wrefresh(self.win5);
+                self.refresh_memview();
+            }
+            _ => {
+                wrefresh(self.win5);
+                self.refresh_memview();
+            }
         }
     }
 }
