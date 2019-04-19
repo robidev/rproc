@@ -75,7 +75,8 @@ impl Virpc {
     pub fn run(&mut self) {
         if !self.powered_on {
             // $0000 is the power-on reset routine
-            self.powered_on = self.cpu.borrow_mut().pc == 0x0000;
+            self.cpu.borrow_mut().set_pc(0x0000);
+            self.powered_on = true;
             if self.powered_on {
                 let prg_file = &self.program_to_load.to_owned()[..];
 

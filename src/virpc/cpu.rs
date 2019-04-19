@@ -51,7 +51,6 @@ pub struct Items {
 }
 
 pub struct CPU {
-    pub pc: u32, // program counter
     pub p:  u8,  // processor status
     pub mem_ref:  Option<memory::MemShared>, // reference to shared system memory
 
@@ -65,7 +64,6 @@ pub struct CPU {
 impl CPU {
     pub fn new_shared() -> CPUShared {
         Rc::new(RefCell::new(CPU {
-            pc: 0,
             p:  0,
             mem_ref:  None,
             instruction_u8 : 0,
@@ -84,6 +82,14 @@ impl CPU {
     pub fn set_references(&mut self, memref: memory::MemShared) {
         self.mem_ref = Some(memref);
     }    
+
+    pub fn set_pc(&self, pc : u32) {
+        as_ref!(self.mem_ref).write_int_le(PC_REG,pc);
+    }
+
+    pub fn get_pc(&self) -> u32 {
+        as_ref!(self.mem_ref).read_int_le(PC_REG)
+    }
     
 
     pub fn set_status_flag(&mut self, flag: StatusFlag, value: bool) {
@@ -110,7 +116,7 @@ impl CPU {
 
     pub fn reset(&mut self) {
         let pc = self.read_int_le(RESET_VECTOR);
-        self.pc = pc;
+        self.set_pc(pc);
 
         // I'm only doing this to avoid dead code warning :)
         self.set_status_flag(StatusFlag::Unused, false);
@@ -148,16 +154,18 @@ impl CPU {
 
 
     pub fn next_byte(&mut self) -> u8 {
-        let pc = self.pc;
+        let mut pc = self.get_pc();
         let op = self.read_byte(pc);
-        self.pc += 1;
+        pc += 1;
+        self.set_pc(pc);
         op
     }
 
     pub fn next_int(&mut self) -> u32 {
-        let pc = self.pc;
+        let mut pc = self.get_pc();
         let op = self.read_int_le(pc);
-        self.pc += 4;
+        pc += 4;
+        self.set_pc(pc);
         op
     }
 
@@ -182,8 +190,8 @@ impl CPU {
     }
 
     pub fn load_opcode_data(&mut self, address: u32) {
-        self.pc = address; //retrieve next byte
-        self.prev_pc = self.pc;
+        self.set_pc(address); //retrieve next byte
+        self.prev_pc = self.get_pc();
         let next_op = self.next_byte();
         match opcodes::get_instruction(next_op) { //retrieve instruction
             Some((opcode, size, arguments, addr_type)) => {
@@ -274,7 +282,7 @@ impl CPU {
                 else {//if 1st arg is not a reference, special case: pc relative str, or arg2 relative
                     if self.instruction.arg[2] == 0 {//PC relative
                         //add arg1+pc to LABEL
-                        let s = format!("LABEL_{:08X}",self.instruction.arg[1]+self.pc); 
+                        let s = format!("LABEL_{:08X}",self.instruction.arg[1]+self.get_pc()); 
                         index = CPU::add_new_item(&mut self.data, CPU::new_Item(s, d,self.instruction.arg[1]) ); 
                         self.instruction.arg_index[1] = index;//index of arg in list                       
                     }
@@ -380,7 +388,7 @@ impl CPU {
         //  if byte = printable char, and more then 2 bytes in a row, then display then as chars/string
         //if instruction is a jump, and addr > pc, then set pc to the jump
         //if instruction is a conditional jump, and addr > pc, then add jump to list of jumps to follow
-        self.pc
+        self.get_pc()
     }
 
     pub fn add_new_item(items : &mut Vec<Items>, new_item : Items) -> u32 {
@@ -408,8 +416,10 @@ impl CPU {
         //self.instruction.opcode | self.instruction.addr_type | self.instruction.args
         let op = opcodes::get_opcode(self);
         self.instruction_u8 = op;
-        self.write_byte(self.pc,op);
-        self.pc += 1;
+        let mut pc = self.get_pc();
+        self.write_byte(pc,op);
+        pc += 1;
+        self.set_pc(pc);
         //self.instruction.arg[](size)
         opcodes::push_operand_addr(self);
         //put @ addr in memory (cannot insert, only overwrite, or complete re-assemble-> fixed code with only label-jumps, data/lib/stack section)
@@ -523,6 +533,10 @@ impl CPU {
             litems_d.push(new_item(it.name.as_bytes() , it.description.as_bytes() ));
         }
         litems_d
+    }
+
+    pub fn get_data_value(&mut self, index : u32) -> u32 {
+        self.data[index as usize].value
     }
 
     pub fn get_variables_list() -> Vec<Items> {

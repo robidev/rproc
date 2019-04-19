@@ -126,7 +126,7 @@ impl Debugger {
     fn draw_cpu(&mut self, cpu: &mut virpc::cpu::CPUShared) {
         let mut pc_txt = Vec::new();
         let mut p_txt = Vec::new();
-        let _ = write!(&mut pc_txt, "${:04X}", cpu.borrow_mut().pc);
+        let _ = write!(&mut pc_txt, "${:04X}", cpu.borrow_mut().get_pc());
         let _ = write!(&mut p_txt, "[{:08b}]", cpu.borrow_mut().p);
         
         self.font.draw_text(&mut self.window_buffer, DEBUG_W, 44, 22, "PC:", 0x0F);

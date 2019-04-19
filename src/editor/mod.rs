@@ -8,24 +8,34 @@ static COLOR_PAIR_DEFAULT: i16 = 1;
 static COLOR_PAIR_KEYWORD: i16 = 2;
 static MEMORY_SIZE: u32 = 0x080000;
 
+//TODO define labels: has name, location, size, and highlight current in hexview
+//TODO add search for label in code
+//TODO add new label in code
+//TODO add search for label in mem/bss (and scroll to current label)
+//TODO add new label in mem/bss
+//TODO add whole memview(separate window)
+//TODO add colorised modified values in hexview
+//TODO map PC to mem-location
+//TODO add custom handling of ldr/str arguments, and argument printing
+
 static EBCDIC: [char;256] = [
     /* 0   1   2   3   4   5   6   7   8   9   A   B   C   D    E   F */
       '.','.','.','.','.','.','.','.','.','.','.','.','.','.' ,'.','.', /* 0 */
       '.','.','.','.','.','.','.','.','.','.','.','.','.','.' ,'.','.', /* 1 */
-      '.','.','.','.','.','.','.','.','.','.','.','.','.','.' ,'.','.', /* 2 */
-      '.','.','.','.','.','.','.','.','.','.','.','.','.','.' ,'.','.', /* 3 */
-      ' ','.','.','.','.','.','.','.','.','.','.','.','<','(' ,'+','|', /* 4 */
-      '&','.','.','.','.','.','.','.','.','.','!','$','*',')' ,';','.', /* 5 */
-      '-','/','.','.','.','.','.','.','.','.','.',',','%','_' ,'>','?', /* 6 */
-      '.','.','.','.','.','.','.','.','.','.',':','#','@','\'','=','"', /* 7 */
-      '.','a','b','c','d','e','f','g','h','i','.','.','.','.' ,'.','.', /* 8 */
-      '.','.','j','k','l','m','n','o','p','q','.','.','.','.' ,'.','.', /* 9 */
-      '.','r','s','t','u','v','w','x','y','z','.','.','.','.' ,'.','.', /* A */
-      '.','.','.','.','.','.','.','.','.','`','.','.','.','.' ,'.','.', /* B */
-      '.','A','B','C','D','E','F','G','H','I','.','.','.','.' ,'.','.', /* C */
-      '.','.','J','K','L','M','N','O','P','Q','.','.','.','.' ,'.','.', /* D */
-      '.','R','S','T','U','V','W','X','Y','Z','.','.','.','.' ,'.','.', /* E */
-      '0','1','2','3','4','5','6','7','8','9','.','.','.','.' ,'.','.' ];/* F */
+      ' ','!','"','#','$','%','&','\'','(',')','*','+',',','-','.','/', /* 2 */
+      '0','1','2','3','4','5','6','7','8','9',':',';','<','=' ,'>','?', /* 3 */
+      '@','A','B','C','D','E','F','G','H','I','J','K','L','M' ,'N','O', /* 4 */
+      'P','Q','R','S','T','U','V','W','X','Y','Z','[','\\',']','^','_', /* 5 */
+      '`','a','b','c','d','e','f','g','h','i','j','k','l','m' ,'n','o', /* 6 */
+      'p','q','r','s','t','u','v','w','x','y','z','{','|','}' ,'~','.', /* 7 */
+      '.','.','.','.','.','.','.','.','.','.','.','.','.','.' ,'.','.', /* 8 */
+      '.','.','.','.','.','.','.','.','.','.','.','.','.','.' ,'.','.', /* 9 */
+      '.','.','.','.','.','.','.','.','.','.','.','.','.','.' ,'.','.', /* A */
+      '.','.','.','.','.','.','.','.','.','.','.','.','.','.' ,'.','.', /* B */
+      '.','.','.','.','.','.','.','.','.','.','.','.','.','.' ,'.','.', /* C */
+      '.','.','.','.','.','.','.','.','.','.','.','.','.','.' ,'.','.', /* D */
+      '.','.','.','.','.','.','.','.','.','.','.','.','.','.' ,'.','.', /* E */
+      '.','.','.','.','.','.','.','.','.','.','.','.','.','.' ,'.','.'];/* F */
 
 
 pub struct Windows {
@@ -334,8 +344,7 @@ impl Windows {
                 mvwprintw(self.win4,0,1," addressing mode ");
                 mvwprintw(self.win5,0,1,"<memory view>");
             }
-            _ => {
-                
+            _ => { 
             }
         }
         refresh();            
@@ -358,6 +367,7 @@ impl Windows {
         self.items3 = self.cpu_reader.borrow_mut().get_addressing_mode_list();
         self.menu3 = Windows::create_menu(&mut self.items3, self.win4, self.menu3_choice);
 
+        self.mem_address = self.cpu_reader.borrow_mut().get_data_value(self.menu2_choice);
         self.refresh_memview();
     }
 
@@ -413,7 +423,7 @@ impl Windows {
         }
         //set currenl line to the one we want to edit
         self.cpu_reader.borrow_mut().load_opcode_data(self.edit_pc);//fill data with current instruction
-        self.cpu_reader.borrow_mut().pc = self.edit_pc;//set pc to current instruction
+        self.cpu_reader.borrow_mut().set_pc(self.edit_pc);//set pc to current instruction
         //refresh the screen
         wrefresh(self.win2_sub);
     }
@@ -436,7 +446,7 @@ impl Windows {
                     asci = format!("{} ",asci);
                 }
             }
-            let s = format!("${:08X} |{} | {}",(i*w),hex,asci);
+            let s = format!("${:08X} |{} | {}",self.mem_address + (i*w) as u32,hex,asci);
             mvwprintw(self.win5,i+1,1,s.as_str());
         }
         wrefresh(self.win5);
@@ -544,9 +554,27 @@ impl Windows {
                     ch = getch();
                 }
                 Windows::destroy_menu(menu,&mut items);
+            }/*
+            1 if self.cur_arg == 1 && code == 0x01 => {//call or jmp
+                //dialog for call: select an address (provide suggestions, based on labels)
+                call cpu for list of labels in range code
+                OR input value (and add new label)
+                BOTH update code for help
             }
-            1 if self.cur_arg == 1 && code == 0x01 => {//call
+            2 => {
+                //dialog for new heap: select an address (provide suggestions, based on labels)
+                call cpu for list of labels in range mem
+                OR input value (and add new label)
+                BOTH update memview for help
             }
+            3 => {
+                //dialog for BSS: select an address (provide suggestions based on labels)
+                call cpu for list of labels in range bss
+                OR input value (and add new label)
+                BOTH update memview for help
+            }
+
+
             2 if self.cur_arg == 1 && code == 0x0a  => {//ldr
                 //edit cpu-arg and opcode if necesary
                 //self.edit_cmd, self.edit_mode[0], self.edit_mode[1], self.edit_mode[2]
@@ -556,17 +584,47 @@ impl Windows {
             2 if self.cur_arg == 1 && code == 0x0b=> {//str
             }
             2 if self.cur_arg == 2 && code == 0x0b=> {//str
-            }
+            }*/
             _ => {
                 mvwprintw(lwin_menu,0,1," input a number ");
                 mvwprintw(lwin_menu,2,1," input:");
                 wrefresh(lwin_menu);
                 curs_set(CURSOR_VISIBILITY::CURSOR_VISIBLE);
                 wrefresh(lwin_menu);
-                let mut ch = getch();
+                let mut val : String = String::from("");
+                let mut ch = 0;//getch();
                 while ch != 27 as i32 { // ESC pressed, so quit
-                    wechochar(lwin_menu, ch as u64);
+                    //hex or normal
                     ch = getch();
+                    match ch {
+                        //KEY_LEFT => {}
+                        //KEY_RIGHT => {}
+                        0xa => {//enter
+                            if val.len() > 2 && val.as_bytes()[0] == 0x30 && (val.as_bytes()[1] == 0x58 || val.as_bytes()[1] == 0x78) {
+                                let without_prefix = val.trim_left_matches("0x");
+                                v = u32::from_str_radix(without_prefix, 16).unwrap();
+                            }
+                            else {
+                                v = u32::from_str_radix(val.as_str(), 10).unwrap();
+                            }
+                            s = format!("CONST_{}",v);
+                            self.edit_item[self.cur_arg as usize] = cpu::CPU::add_new_item(&mut self.cpu_reader.borrow_mut().data, cpu::CPU::new_Item(s, d, v) ) as i32;
+                            self.modify();
+                            break;
+                        } 
+                        0x107 => {//backspace
+                            val.pop();
+                        }
+                        _ => {
+                            let key = (ch as u8) as char;
+                            if ( key.is_ascii_hexdigit() || ch==0x78 || ch==0x58 ) && val.len() < 10 {
+                                val.push(key);
+                            }
+                        }
+                    }
+                    mvwprintw(lwin_menu,2,8,"          ");
+                    mvwprintw(lwin_menu,2,8,val.as_str());
+                    wrefresh(lwin_menu);
                 }
                 curs_set(CURSOR_VISIBILITY::CURSOR_INVISIBLE);
             },
@@ -710,6 +768,7 @@ impl Windows {
             }
         }
     }
+
     fn handle_keys_win5(&mut self, ch : i32) {
         let w = ((self.wd(5,'w')/4)-4) as u32;
         match ch {
@@ -717,18 +776,144 @@ impl Windows {
                 if self.mem_address >= w {
                     self.mem_address -= w;
                 }
-                wrefresh(self.win4);
-                self.edit_mode[self.cur_arg as usize] = item_index(current_item(self.menu3));
+                else {
+                    self.mem_address = 0;
+                }
+                self.refresh_memview();
             }
             KEY_DOWN => {
                 if self.mem_address < MEMORY_SIZE-1 {
                     self.mem_address += w;
                 }
-                wrefresh(self.win5);
                 self.refresh_memview();
+            }            
+            0x65 => {
+                self.refresh_memview();
+                curs_set(CURSOR_VISIBILITY::CURSOR_VISIBLE);
+                
+                let mut hex = true;
+                let mut begin : i32 = 13;
+                let mut col = begin;
+                let mut row = 1;
+                let mut w = ((self.wd(5,'w')/4)*3)-1;
+                let h = self.wd(5,'h') - 2;
+
+                let mut ch = 0;
+                while ch != 27 as i32 { // ESC pressed, so quit
+                    self.refresh_memview();
+                    wmove(self.win5, row, col);
+                    wrefresh(self.win5);
+                    ch = getch();
+                    match ch {
+                        KEY_LEFT => {
+                            if col > begin { col -= 1; }
+                            else {
+                                if row > 1 { col = w; row -= 1; }  
+                                else {
+                                    col = w;
+                                    let mut r = w-begin;
+                                    if hex { r /= 3; }
+                                    if self.mem_address as i32 - r >= 0 { self.mem_address -= (r+1) as u32; }
+                                    else { self.mem_address = 0; }
+                                }
+                            }
+                            if (col) % 3 == 0 && hex { col -= 1; }
+                        }
+                        KEY_RIGHT => {
+                            if col < w { col += 1; }
+                            else {
+                                if row < h { col = begin; row += 1; }
+                                else { 
+                                    col = begin;
+                                    let mut r = w-begin;
+                                    if hex { r /= 3; }
+                                    self.mem_address += (r+1) as u32; 
+                                }
+                            }
+
+                            if (col) % 3 == 0 && hex { col += 1; }
+                        }
+                        KEY_UP => {
+                            let mut r = w-begin;
+                            if hex { r /= 3; }
+                            if row > 1 { row -= 1; }  
+                            else {
+                                if self.mem_address as i32 - (r+1) >= 0 { 
+                                    self.mem_address -= (r+1) as u32; 
+                                }
+                                else { self.mem_address = 0; }
+                            }
+                        }
+                        KEY_DOWN => {
+                            if row < h { row += 1; }
+                            else { 
+                                let mut r = w-begin;
+                                if hex { r /= 3; }
+                                self.mem_address += (r+1) as u32; 
+                            }
+                        }
+                        0x9 => {
+                            if hex {
+                                hex = false;
+                                col -= begin;//remove offset
+                                begin = ((self.wd(5,'w')/4)*3)+3;//redefine begin
+                                w = ((self.wd(5,'w')/4)*4)-2;
+                                col = begin + (col/3);
+                            }
+                            else {
+                                hex = true;
+                                col -= begin;//remove offset
+                                begin = 13;//redefine begin
+                                w = ((self.wd(5,'w')/4)*3)-1;
+                                col = begin + (col*3);
+                            }
+                        }
+                        _ => {
+                            let key = (ch as u8) as char;
+                            if (key.is_ascii() && !hex) || (hex && key.is_ascii_hexdigit()) {
+                                if hex {			// if in hex win...   
+                                    let addr = self.mem_address + (((col-begin)/3) + ((row-1)*(((w+3)-begin)/3))) as u32;
+                                    let mut val = self.cpu_reader.borrow_mut().read_byte(addr) as i32;
+
+                                    if ch >= 65 && ch <= 70	{// get correct val    
+                                        ch -= 7;
+                                    }
+                                    else if ch >= 97 && ch <= 102 {
+                                        ch -= 39;
+                                    }
+                                    ch -= 48;
+                                
+                                    if (col % 3) == 1 {		// compute byte val   
+                                        val = (ch * 16) + (val % 16);
+                                    }
+                                    else if (col % 3) == 2 {
+                                        val = val - ((val + 16) % 16) + ch;
+                                    }
+                                    self.cpu_reader.borrow_mut().write_byte(addr, val as u8);
+                                }
+                                else {
+                                    let addr = self.mem_address + ((col-begin) + ((row-1)*((w+1)-begin))) as u32;
+                                    self.cpu_reader.borrow_mut().write_byte(addr, ch as u8);
+                                }
+                                if col < w { col += 1; }
+                                else {
+                                    if row < h { col = begin; row += 1; }
+                                    else { 
+                                        col = begin;
+                                        let mut r = w-begin;
+                                        if hex { r = r/3; }
+                                        self.mem_address += (r+1) as u32; 
+                                    }
+                                }
+                                if (col) % 3 == 0 && hex { col += 1; }
+                            }
+                        }
+                    }
+                    std::thread::sleep(std::time::Duration::from_millis(50));
+                }
+                curs_set(CURSOR_VISIBILITY::CURSOR_INVISIBLE);
             }
             _ => {
-                wrefresh(self.win5);
                 self.refresh_memview();
             }
         }

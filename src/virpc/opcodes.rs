@@ -93,33 +93,33 @@ pub fn run(cpu: &mut cpu::CPU) -> bool {
         Op::JMP => { 
             match cpu.instruction.arg[1] {
                 
-                1 => { if cpu.get_status_flag(cpu::StatusFlag::Carry) { cpu.pc = cpu.instruction.arg[0]; } },
-                2 => { if cpu.get_status_flag(cpu::StatusFlag::Zero ) { cpu.pc = cpu.instruction.arg[0]; } },
-                3 => { if cpu.get_status_flag(cpu::StatusFlag::Overflow) { cpu.pc = cpu.instruction.arg[0]; } },
-                4 => { if cpu.get_status_flag(cpu::StatusFlag::Negative) { cpu.pc = cpu.instruction.arg[0]; } },
+                1 => { if cpu.get_status_flag(cpu::StatusFlag::Carry) { cpu.set_pc(cpu.instruction.arg[0]); } },
+                2 => { if cpu.get_status_flag(cpu::StatusFlag::Zero ) { cpu.set_pc(cpu.instruction.arg[0]); } },
+                3 => { if cpu.get_status_flag(cpu::StatusFlag::Overflow) { cpu.set_pc(cpu.instruction.arg[0]); } },
+                4 => { if cpu.get_status_flag(cpu::StatusFlag::Negative) { cpu.set_pc(cpu.instruction.arg[0]); } },
 
-                5 => { if !cpu.get_status_flag(cpu::StatusFlag::Carry) { cpu.pc = cpu.instruction.arg[0]; } },
-                6 => { if !cpu.get_status_flag(cpu::StatusFlag::Zero ) { cpu.pc = cpu.instruction.arg[0]; } },
-                7 => { if !cpu.get_status_flag(cpu::StatusFlag::Overflow) { cpu.pc = cpu.instruction.arg[0]; } },
-                8 => { if !cpu.get_status_flag(cpu::StatusFlag::Negative) { cpu.pc = cpu.instruction.arg[0]; } },
+                5 => { if !cpu.get_status_flag(cpu::StatusFlag::Carry) { cpu.set_pc(cpu.instruction.arg[0]); } },
+                6 => { if !cpu.get_status_flag(cpu::StatusFlag::Zero ) { cpu.set_pc(cpu.instruction.arg[0]); } },
+                7 => { if !cpu.get_status_flag(cpu::StatusFlag::Overflow) { cpu.set_pc(cpu.instruction.arg[0]); } },
+                8 => { if !cpu.get_status_flag(cpu::StatusFlag::Negative) { cpu.set_pc(cpu.instruction.arg[0]); } },
 
-                9 => { if cpu.get_status_flag(cpu::StatusFlag::Carry) { cpu.pc = (cpu.prev_pc as i32 + cpu.instruction.arg[0] as i32) as u32; } },
-                10 => { if cpu.get_status_flag(cpu::StatusFlag::Zero ) { cpu.pc = (cpu.prev_pc as i32 + cpu.instruction.arg[0] as i32) as u32; } },
-                11 => { if cpu.get_status_flag(cpu::StatusFlag::Overflow) { cpu.pc = (cpu.prev_pc as i32 + cpu.instruction.arg[0] as i32) as u32; } },
-                12 => { if cpu.get_status_flag(cpu::StatusFlag::Negative) { cpu.pc = (cpu.prev_pc as i32 + cpu.instruction.arg[0] as i32) as u32; } },
+                9 => { if cpu.get_status_flag(cpu::StatusFlag::Carry) { cpu.set_pc((cpu.prev_pc as i32 + cpu.instruction.arg[0] as i32) as u32); } },
+                10 => { if cpu.get_status_flag(cpu::StatusFlag::Zero ) { cpu.set_pc((cpu.prev_pc as i32 + cpu.instruction.arg[0] as i32) as u32); } },
+                11 => { if cpu.get_status_flag(cpu::StatusFlag::Overflow) { cpu.set_pc((cpu.prev_pc as i32 + cpu.instruction.arg[0] as i32) as u32); } },
+                12 => { if cpu.get_status_flag(cpu::StatusFlag::Negative) { cpu.set_pc((cpu.prev_pc as i32 + cpu.instruction.arg[0] as i32) as u32); } },
 
-                13 => { if !cpu.get_status_flag(cpu::StatusFlag::Carry) { cpu.pc = (cpu.prev_pc as i32 + cpu.instruction.arg[0] as i32) as u32; } },
-                14 => { if !cpu.get_status_flag(cpu::StatusFlag::Zero ) { cpu.pc = (cpu.prev_pc as i32 + cpu.instruction.arg[0] as i32) as u32; } },
-                15 => { if !cpu.get_status_flag(cpu::StatusFlag::Overflow) { cpu.pc = (cpu.prev_pc as i32 + cpu.instruction.arg[0] as i32) as u32; } },
-                16 => { if !cpu.get_status_flag(cpu::StatusFlag::Negative) { cpu.pc = (cpu.prev_pc as i32 + cpu.instruction.arg[0] as i32) as u32; } },
+                13 => { if !cpu.get_status_flag(cpu::StatusFlag::Carry) { cpu.set_pc((cpu.prev_pc as i32 + cpu.instruction.arg[0] as i32) as u32); } },
+                14 => { if !cpu.get_status_flag(cpu::StatusFlag::Zero ) { cpu.set_pc((cpu.prev_pc as i32 + cpu.instruction.arg[0] as i32) as u32); } },
+                15 => { if !cpu.get_status_flag(cpu::StatusFlag::Overflow) { cpu.set_pc( (cpu.prev_pc as i32 + cpu.instruction.arg[0] as i32) as u32); } },
+                16 => { if !cpu.get_status_flag(cpu::StatusFlag::Negative) { cpu.set_pc( (cpu.prev_pc as i32 + cpu.instruction.arg[0] as i32) as u32); } },
 
-                17 => { cpu.pc = (cpu.pc as i32 + cpu.instruction.arg[0] as i32) as u32; },
-                _ => cpu.pc = cpu.instruction.arg[0],
+                17 => { cpu.set_pc((cpu.prev_pc as i32 + cpu.instruction.arg[0] as i32) as u32); },
+                _ => cpu.set_pc(cpu.instruction.arg[0]),
             }
         },
         Op::CLL => {
-            let pos = cpu.pc;
-            cpu.pc = cpu.instruction.arg[0]+cpu.instruction.arg[1];
+            let pos = cpu.get_pc();
+            cpu.set_pc(cpu.instruction.arg[0]+cpu.instruction.arg[1]);
 
             //call A+B, and store pos on C
             let adr = cpu.instruction.arg[2];
@@ -139,29 +139,20 @@ pub fn run(cpu: &mut cpu::CPU) -> bool {
                             cpu.write_int_le(cpu.instruction.arg[2], stack + 1);
                         }
                     }
-                    else {//if 2nd arg is not a reference, special case: pc relative ldr, or arg2 relative
-                        //read val from pc+const_arg1, store in arg0
-                        if cpu.instruction.arg[2] == 0 {
-                            let val = cpu.read_byte((cpu.instruction.arg[1] as i32 + cpu.pc as i32) as u32);
-                            cpu.write_byte(cpu.instruction.arg[0],val);   
+                    else {//if 2nd arg is not a reference, special case: arg2 relative
+                        //read val from [addr](+const), and inc addr => pop a/[a]
+                        if cpu.instruction.args & 0x01 == 0 {//pop(a=[[stack+b]++]) = ldr 1 b010,
+                            let stack = cpu.read_int_le(cpu.instruction.arg[2]);
+                            let val = cpu.read_byte((cpu.instruction.arg[1] as i32 + stack as i32) as u32);
+                            cpu.write_byte(cpu.instruction.arg[0],val);  
+                            cpu.write_int_le(cpu.instruction.arg[2], stack + 1);                           
                         }
-                        //arg2 is valid, so use as stack-pointer
-                        else {
-                            //read val from [addr](+const), and inc addr => pop a/[a]
-                            if cpu.instruction.args & 0x01 == 0 {//pop(a=[[stack+b]++]) = ldr 1 b010,
-                                let stack = cpu.read_int_le(cpu.instruction.arg[2]);
-                                let val = cpu.read_byte((cpu.instruction.arg[1] as i32 + stack as i32) as u32);
-                                cpu.write_byte(cpu.instruction.arg[0],val);  
-                                cpu.write_int_le(cpu.instruction.arg[2], stack + 1);                           
-                            }
-                            //read val from [addr]+const
-                            else {//ldr(a=[b+sp])
-                                let stack = cpu.instruction.arg[2];
-                                let val = cpu.read_byte((cpu.instruction.arg[1] as i32 + stack as i32) as u32);
-                                cpu.write_byte(cpu.instruction.arg[0],val);                                  
-                            }
-
-                        }                     
+                        //read val from [addr]+const
+                        else {//ldr(a=[b+sp])
+                            let stack = cpu.instruction.arg[2];
+                            let val = cpu.read_byte((cpu.instruction.arg[1] as i32 + stack as i32) as u32);
+                            cpu.write_byte(cpu.instruction.arg[0],val);                                  
+                        }                   
                     }
                 }
                 ArgumentSize::Int => {  //ldr(a=[b]), optional: [c]++
@@ -176,29 +167,21 @@ pub fn run(cpu: &mut cpu::CPU) -> bool {
                             cpu.write_int_le(cpu.instruction.arg[2], stack + 4);//1<-504
                         }
                     }
-                    else {//if 2nd arg is not a reference, special case: pc relative, or arg2 relative ldr
-                        //read val from pc+const_arg1, store in arg0
-                        if cpu.instruction.arg[2] == 0 {//ldr(a=[b+pc])
-                            let val = cpu.read_int_le((cpu.instruction.arg[1] as i32 + cpu.pc as i32) as u32);//value from [pc+arg1]
+                    else {//if 2nd arg is not a reference, special case: arg2 relative ldr
+                        //read val from [addr](+const), and inc addr => pop a/[a]
+                        //increment value that c points to, if args==xx0
+                        if cpu.instruction.args & 0x01 == 0 {//pop(a=[[stack+b]++]) = ldr 1 b010,
+                            let stack = cpu.read_int_le(cpu.instruction.arg[2]);//arg2=1=>500, stack=500 
+                            let val = cpu.read_int_le((cpu.instruction.arg[1] as i32 + stack as i32) as u32);//value from [arg1+stack]
                             cpu.write_int_le(cpu.instruction.arg[0],val);//arg0/[arg0] = value
-                        } 
-                        //arg2 is valid, so use as stack-pointer
-                        else {
-                            //read val from [addr](+const), and inc addr => pop a/[a]
-                            //increment value that c points to, if args==xx0
-                            if cpu.instruction.args & 0x01 == 0 {//pop(a=[[stack+b]++]) = ldr 1 b010,
-                                let stack = cpu.read_int_le(cpu.instruction.arg[2]);//arg2=1=>500, stack=500 
-                                let val = cpu.read_int_le((cpu.instruction.arg[1] as i32 + stack as i32) as u32);//value from [arg1+stack]
-                                cpu.write_int_le(cpu.instruction.arg[0],val);//arg0/[arg0] = value
-                                cpu.write_int_le(cpu.instruction.arg[2], stack + 4);//1<-504
-                            }
-                            //read val from [addr]+const
-                            else {//ldr(a=[b+sp])
-                                let stack = cpu.instruction.arg[2];//arg2=1=>500, stack=500 
-                                let val = cpu.read_int_le((cpu.instruction.arg[1] as i32 + stack as i32) as u32);//value from [arg1+stack]
-                                cpu.write_int_le(cpu.instruction.arg[0],val);//arg0/[arg0] = value
-                            }
-                        }                  
+                            cpu.write_int_le(cpu.instruction.arg[2], stack + 4);//1<-504
+                        }
+                        //read val from [addr]+const
+                        else {//ldr(a=[b+sp])
+                            let stack = cpu.instruction.arg[2];//arg2=1=>500, stack=500 
+                            let val = cpu.read_int_le((cpu.instruction.arg[1] as i32 + stack as i32) as u32);//value from [arg1+stack]
+                            cpu.write_int_le(cpu.instruction.arg[0],val);//arg0/[arg0] = value
+                        }                 
                     }
                 }
             };
@@ -215,23 +198,17 @@ pub fn run(cpu: &mut cpu::CPU) -> bool {
                             cpu.write_int_le(cpu.instruction.arg[2], stack - 1);                      
                         }
                     }
-                    else {//if 2nd arg is not a reference, special case: pc relative str, or arg2 relative
-                        if cpu.instruction.arg[2] == 0 {
-                            let adr = (cpu.instruction.arg[1] as i32 + cpu.pc as i32) as u32;
-                            cpu.write_byte(adr,cpu.instruction.arg[0] as u8);
+                    else {//if 2nd arg is not a reference, special case: arg2 relative
+                        if cpu.instruction.args & 0x01 == 0 {
+                            let stack = cpu.read_int_le(cpu.instruction.arg[2]);//arg2=1, stack = 500
+                            let adr = (cpu.instruction.arg[1] as i32 + stack as i32) as u32;//adr = 500+arg1
+                            cpu.write_byte(adr,cpu.instruction.arg[0] as u8);  //[adr] = arg0/[arg0]
+                            cpu.write_int_le(cpu.instruction.arg[2], stack - 1); //1<-501
                         }
                         else {
-                            if cpu.instruction.args & 0x01 == 0 {
-                                let stack = cpu.read_int_le(cpu.instruction.arg[2]);//arg2=1, stack = 500
-                                let adr = (cpu.instruction.arg[1] as i32 + stack as i32) as u32;//adr = 500+arg1
-                                cpu.write_byte(adr,cpu.instruction.arg[0] as u8);  //[adr] = arg0/[arg0]
-                                cpu.write_int_le(cpu.instruction.arg[2], stack - 1); //1<-501
-                            }
-                            else {
-                                let stack = cpu.instruction.arg[2];
-                                let adr = (cpu.instruction.arg[1] as i32 + stack as i32) as u32;
-                                cpu.write_byte(adr,cpu.instruction.arg[0] as u8);                                
-                            }
+                            let stack = cpu.instruction.arg[2];
+                            let adr = (cpu.instruction.arg[1] as i32 + stack as i32) as u32;
+                            cpu.write_byte(adr,cpu.instruction.arg[0] as u8);                                
                         }
                     }
                 }
@@ -245,23 +222,17 @@ pub fn run(cpu: &mut cpu::CPU) -> bool {
                             cpu.write_int_le(cpu.instruction.arg[2], stack - 4);
                         }
                     }
-                    else {//if 1st arg is not a reference, special case: pc relative str, or arg2 relative
-                        if cpu.instruction.arg[2] == 0 {//PC relative
-                            let adr = (cpu.instruction.arg[1] as i32 + cpu.pc as i32) as u32;
-                            cpu.write_int_le(adr,cpu.instruction.arg[0]);
+                    else {//if 1st arg is not a reference, special case: arg2 relative
+                        if cpu.instruction.args & 0x01 == 0 {
+                            let stack = cpu.read_int_le(cpu.instruction.arg[2]);
+                            let adr = (cpu.instruction.arg[1] as i32 + stack as i32) as u32;
+                            cpu.write_int_le(adr,cpu.instruction.arg[0]);  
+                            cpu.write_int_le(cpu.instruction.arg[2], stack - 4);                               
                         }
-                        else {//arg2+const
-                            if cpu.instruction.args & 0x01 == 0 {
-                                let stack = cpu.read_int_le(cpu.instruction.arg[2]);
-                                let adr = (cpu.instruction.arg[1] as i32 + stack as i32) as u32;
-                                cpu.write_int_le(adr,cpu.instruction.arg[0]);  
-                                cpu.write_int_le(cpu.instruction.arg[2], stack - 4);                               
-                            }
-                            else {
-                                let stack = cpu.instruction.arg[2];
-                                let adr = (cpu.instruction.arg[1] as i32 + stack as i32) as u32;
-                                cpu.write_int_le(adr,cpu.instruction.arg[0]);                                
-                            }
+                        else {
+                            let stack = cpu.instruction.arg[2];
+                            let adr = (cpu.instruction.arg[1] as i32 + stack as i32) as u32;
+                            cpu.write_int_le(adr,cpu.instruction.arg[0]);                                
                         }
                     }
                 }
@@ -553,8 +524,8 @@ pub fn get_opcode(cpu: &mut cpu::CPU) -> u8 {
 pub fn push_operand_addr(cpu: &mut cpu::CPU) -> bool {
     for arg_i in 0..cpu.instruction.size {
         match cpu.instruction.addressing_type {
-            ArgumentSize::Int => { cpu.write_int_le(cpu.pc,cpu.instruction.arg[arg_i as usize] ); cpu.pc += 4; },
-            ArgumentSize::Byte => { cpu.write_byte(cpu.pc,cpu.instruction.arg[arg_i as usize] as u8); cpu.pc += 1; },//TODO, is this a value(byte), or an address?(int)
+            ArgumentSize::Int => { cpu.write_int_le(cpu.get_pc(),cpu.instruction.arg[arg_i as usize] ); cpu.set_pc( cpu.get_pc() + 4); },
+            ArgumentSize::Byte => { cpu.write_byte(cpu.get_pc(),cpu.instruction.arg[arg_i as usize] as u8); cpu.set_pc( cpu.get_pc() + 1); },//TODO, is this a value(byte), or an address?(int)
         }
     }
     true
