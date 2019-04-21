@@ -9,13 +9,15 @@ static COLOR_PAIR_KEYWORD: i16 = 2;
 static MEMORY_SIZE: u32 = 0x080000;
 
 //TODO define labels: has name, location, size, and highlight current in hexview
+//TODO add new label in code->window
+//TODO add new label in mem/bss->window
+
 //TODO add search for label in code
-//TODO add new label in code
 //TODO add search for label in mem/bss (and scroll to current label)
-//TODO add new label in mem/bss
+
 //TODO add whole memview(separate window)
 //TODO add colorised modified values in hexview
-//TODO map PC to mem-location
+
 //TODO add custom handling of ldr/str arguments, and argument printing
 
 static EBCDIC: [char;256] = [
@@ -68,6 +70,8 @@ pub struct Windows {
     edit_item : Vec<i32>,
     edit_mode : Vec<i32>,
     mem_address : u32,
+    mem_highlight : u32,
+    mem_highlight_size : u32,
 }
 
 impl Windows {
@@ -103,6 +107,8 @@ impl Windows {
             edit_item : vec![-1; 3],
             edit_mode : vec![-1; 3],
             mem_address : 0,
+            mem_highlight : 0,
+            mem_highlight_size : 0,
         };
 
         initscr();
@@ -126,6 +132,10 @@ impl Windows {
         win.items1 = win.cpu_reader.borrow_mut().get_commands_list();
         win.items2 = win.cpu_reader.borrow_mut().get_data_list();
         win.items3 = win.cpu_reader.borrow_mut().get_addressing_mode_list();
+
+        win.cpu_reader.borrow_mut().add_new_label("start".to_string(),0x7, 20);
+
+
         refresh();//needed for win size
         win.menu1 = Windows::create_menu(&mut win.items1,win.win1,0);
         win.menu2 = Windows::create_menu(&mut win.items2,win.win3,0);
@@ -134,6 +144,7 @@ impl Windows {
         win.screen_height = 0;
         win.screen_width = 0;
         win.resize_check();
+
         win
     }
 
@@ -368,6 +379,10 @@ impl Windows {
         self.menu3 = Windows::create_menu(&mut self.items3, self.win4, self.menu3_choice);
 
         self.mem_address = self.cpu_reader.borrow_mut().get_data_value(self.menu2_choice);
+        match self.cpu_reader.borrow_mut().get_label(self.mem_address) {
+            Some(lbl) => { self.mem_highlight = self.mem_address; self.mem_highlight_size = lbl.size; }
+            None => { self.mem_highlight = 0; self.mem_highlight_size = 0; }
+        }
         self.refresh_memview();
     }
 
@@ -430,24 +445,60 @@ impl Windows {
 
     fn refresh_memview(&mut self) {
         for i in 0..(self.wd(5,'h')-2) {
-            let mut hex = "".to_string();
-            let mut asci = "".to_string();
+            //let mut hex = "".to_string();
+            //let mut asci = "".to_string();
             let w = (self.wd(5,'w')/4)-4;
             if ( self.mem_address + (i*w) as u32 )  >= MEMORY_SIZE { break; }
+
+            let s = format!("${:08X} |",self.mem_address + (i*w) as u32);
+            mvwprintw(self.win5,i+1,1,s.as_str());
+            for j in 0..w {
+                let adr = self.mem_address + ( (i*w) + j ) as u32;
+                         
+                if adr >= self.mem_highlight && adr < self.mem_highlight + self.mem_highlight_size {
+                    if adr > self.mem_highlight {
+                        wattrset(self.win5, COLOR_PAIR(2));
+                        wprintw(self.win5," ");
+                    }
+                    else {
+                        wprintw(self.win5," ");
+                        wattrset(self.win5, COLOR_PAIR(2));
+                    }
+                }
+                else { wprintw(self.win5," "); }
+
+                let val : u8 = self.cpu_reader.borrow_mut().read_byte(adr);
+                if adr < MEMORY_SIZE {
+                    //hex = format!("{} {:02X}",hex,val);
+                    wprintw(self.win5,format!("{:02X}",val).as_str());
+                    //asci = format!("{}{}",asci,EBCDIC[val as usize]);
+                }
+                else {
+                    //hex = format!("{}   ",hex);
+                    wprintw(self.win5,"  ");
+                    //asci = format!("{} ",asci);
+                }
+                //if adr >= self.mem_highlight + self.mem_highlight_size {
+                wattrset(self.win5, COLOR_PAIR(1));
+                //}       
+            }
+            wprintw(self.win5," | ");
             for j in 0..w {
                 let adr = self.mem_address + ( (i*w) + j ) as u32;
                 let val : u8 = self.cpu_reader.borrow_mut().read_byte(adr);
                 if adr < MEMORY_SIZE {
-                    hex = format!("{} {:02X}",hex,val);
-                    asci = format!("{}{}",asci,EBCDIC[val as usize]);
+                    //hex = format!("{} {:02X}",hex,val);
+                    //asci = format!("{}{}",asci,EBCDIC[val as usize]);
+                    wprintw(self.win5,format!("{}",EBCDIC[val as usize]).as_str());
                 }
                 else {
-                    hex = format!("{}   ",hex);
-                    asci = format!("{} ",asci);
+                    //hex = format!("{}   ",hex);
+                    //asci = format!("{} ",asci);
+                    wprintw(self.win5," ");
                 }
             }
-            let s = format!("${:08X} |{} | {}",self.mem_address + (i*w) as u32,hex,asci);
-            mvwprintw(self.win5,i+1,1,s.as_str());
+            //let s = format!("${:08X} |{} | {}",self.mem_address + (i*w) as u32,hex,asci);
+            //mvwprintw(self.win5,i+1,1,s.as_str());
         }
         wrefresh(self.win5);
     }

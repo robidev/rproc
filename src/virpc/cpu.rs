@@ -50,6 +50,13 @@ pub struct Items {
     value : u32,
 }
 
+#[derive(Debug, Eq, Ord, PartialEq, PartialOrd)]
+pub struct Label {
+    pub address : u32,
+    pub size : u32,
+    pub tag : String,
+}
+
 pub struct CPU {
     pub p:  u8,  // processor status
     pub mem_ref:  Option<memory::MemShared>, // reference to shared system memory
@@ -59,6 +66,7 @@ pub struct CPU {
     pub state: CPUState,
     pub prev_pc: u32,
     pub data : Vec<Items>,
+    pub labels : Vec<Label>,
 }
 
 impl CPU {
@@ -71,6 +79,7 @@ impl CPU {
             instruction: opcodes::Instruction::new(),
             prev_pc: 0,
             data : CPU::get_variables_list(),
+            labels : Vec::new(),
         }))
     }
 
@@ -78,10 +87,65 @@ impl CPU {
         self.data.clear();
     }
 
-
     pub fn set_references(&mut self, memref: memory::MemShared) {
         self.mem_ref = Some(memref);
     }    
+
+    pub fn add_new_label(&mut self, tag : String, adr: u32, size : u32) -> u32 {
+        for i in 0..self.labels.len() {
+            if self.labels[i as usize].address == adr {
+                self.labels[i as usize].tag = tag;
+                self.labels[i as usize].size = size;
+                return i as u32;
+            } 
+        }
+        let ll = Label {
+            tag : tag,
+            address : adr,
+            size : size,
+        };
+        self.labels.push(ll);
+        self.labels.sort();
+        self.labels.len() as u32
+    }
+
+    pub fn get_label(&mut self, adr: u32) -> Option<Label> {
+        for ll in self.labels.iter() {
+            if ll.address == adr {
+                let tmp = Label {
+                    tag : ll.tag.clone(),
+                    address : adr,
+                    size : ll.size,
+                };
+                return Some(tmp);
+            }
+        }
+        None
+    }
+
+    pub fn get_mem_label(&mut self, adr: u32) -> String {
+        let result = self.get_label(adr);
+        match result {
+            Some(lbl) => { format!("{}", lbl.tag).to_string() }
+            None => { 
+                match adr {
+                    0...BSS => {format!("LBL_{}",adr).to_string()},
+                    BSS...REGISTERS => {format!("BSS_{}",adr).to_string()},
+                    REGISTERS...MEMORY => {format!("REG_{}",adr).to_string()},
+                    MEMORY...STACK => {format!("VAR_{}",adr).to_string()},
+                    _ => {format!("adr_{}",adr).to_string()},
+                }
+            }
+        }
+    }
+
+    pub fn get_code_label(&mut self, adr: u32) -> String {
+        let result = self.get_label(adr);
+        match result {
+            Some(lbl) => { format!("{}\t", lbl.tag).to_string() }
+            None => { format!("\t\t").to_string() }
+        }
+    }
 
     pub fn set_pc(&self, pc : u32) {
         as_ref!(self.mem_ref).write_int_le(PC_REG,pc);
@@ -279,42 +343,34 @@ impl CPU {
                         self.instruction.arg_index[2] = index;//index of arg in list
                     }//else, is a ref, of a ref, so we'll not follow
                 }
-                else {//if 1st arg is not a reference, special case: pc relative str, or arg2 relative
-                    if self.instruction.arg[2] == 0 {//PC relative
-                        //add arg1+pc to LABEL
-                        let s = format!("LABEL_{:08X}",self.instruction.arg[1]+self.get_pc()); 
-                        index = CPU::add_new_item(&mut self.data, CPU::new_Item(s, d,self.instruction.arg[1]) ); 
-                        self.instruction.arg_index[1] = index;//index of arg in list                       
-                    }
-                    else {//arg2+const
-                        if self.instruction.args & 0x01 == 0 {//push 
-                            if self.instruction.arg[2] == STACK_REG {
-                                // add arg1 local var
-                                 let s = format!("LOCALVAR_{:08X}",self.instruction.arg[1]+self.read_int_le(self.instruction.arg[2])); 
-                                 index = CPU::add_new_item(&mut self.data, CPU::new_Item(s, d,self.instruction.arg[1]) );
-                                 self.instruction.arg_index[2] = index;//index of arg in list
+                else {//if 1st arg is not a reference, special case: arg2 relative
+                    if self.instruction.args & 0x01 == 0 {//push 
+                        if self.instruction.arg[2] == STACK_REG {
+                            // add arg1 local var
+                                let s = format!("LOCALVAR_{:08X}",self.instruction.arg[1]+self.read_int_le(self.instruction.arg[2])); 
+                                index = CPU::add_new_item(&mut self.data, CPU::new_Item(s, d,self.instruction.arg[1]) );
+                                self.instruction.arg_index[2] = index;//index of arg in list
+                        }
+                        else {
+                            if self.instruction.arg[2] > BSS {
+                                // add arg2 to global var /reg
+                                let s = format!("VAR_{:08X}",self.instruction.arg[1]+self.read_int_le(self.instruction.arg[2])); 
+                                index = CPU::add_new_item(&mut self.data, CPU::new_Item(s, d,self.instruction.arg[1]) );
+                                self.instruction.arg_index[2] = index;//index of arg in list
                             }
                             else {
-                                if self.instruction.arg[2] > BSS {
-                                    // add arg2 to global var /reg
-                                    let s = format!("VAR_{:08X}",self.instruction.arg[1]+self.read_int_le(self.instruction.arg[2])); 
-                                    index = CPU::add_new_item(&mut self.data, CPU::new_Item(s, d,self.instruction.arg[1]) );
-                                    self.instruction.arg_index[2] = index;//index of arg in list
-                                }
-                                else {
-                                    // add arg2 to global const 
-                                    let s = format!("CONST_{:08X}",self.instruction.arg[1]+self.read_int_le(self.instruction.arg[2])); 
-                                    index = CPU::add_new_item(&mut self.data, CPU::new_Item(s, d,self.instruction.arg[1]) );
-                                    self.instruction.arg_index[2] = index;//index of arg in list
-                                }
-                            }                               
-                        }
-                        else {//str([arg2+sp]=arg0)
-                            //value from VAR[arg1+[arg2]]
-                            let s = format!("LOCALVAR_{:08X}",self.instruction.arg[1]+self.instruction.arg[2]); 
-                            index = CPU::add_new_item(&mut self.data, CPU::new_Item(s, d,self.instruction.arg[1]) );
-                            self.instruction.arg_index[2] = index;//index of arg in list
-                        }
+                                // add arg2 to global const 
+                                let s = format!("CONST_{:08X}",self.instruction.arg[1]+self.read_int_le(self.instruction.arg[2])); 
+                                index = CPU::add_new_item(&mut self.data, CPU::new_Item(s, d,self.instruction.arg[1]) );
+                                self.instruction.arg_index[2] = index;//index of arg in list
+                            }
+                        }                               
+                    }
+                    else {//str([arg2+sp]=arg0)
+                        //value from VAR[arg1+[arg2]]
+                        let s = format!("LOCALVAR_{:08X}",self.instruction.arg[1]+self.instruction.arg[2]); 
+                        index = CPU::add_new_item(&mut self.data, CPU::new_Item(s, d,self.instruction.arg[1]) );
+                        self.instruction.arg_index[2] = index;//index of arg in list
                     }
                 }
             },
@@ -338,12 +394,12 @@ impl CPU {
 
                 if self.instruction.args & 0x04 == 0 {
                     if self.instruction.arg_index[1] < 9 {
-                        let s   = format!("LABEL_{:08X}",self.instruction.arg[0]);
+                        let s = format!("{}",self.get_mem_label(self.instruction.arg[0]));
                         let index = CPU::add_new_item(&mut self.data, CPU::new_Item(s, d, self.instruction.arg[0]) );
                         self.instruction.arg_index[0] = index;//index of arg in list
                     }
                     else {
-                        let s = format!("LABEL_{:08X} (pc+{})",self.instruction.arg[0] + self.prev_pc, self.instruction.arg[0]);
+                        let s = format!("{} (pc+{})",self.get_mem_label(self.instruction.arg[0] + self.prev_pc), self.instruction.arg[0]);
                         let index = CPU::add_new_item(&mut self.data, CPU::new_Item(s, d,self.instruction.arg[0]) );
                         self.instruction.arg_index[0] = index;//index of arg in list
                     }
@@ -358,16 +414,18 @@ impl CPU {
                 for i in 0..(self.instruction.size as usize) {
                     let d = " ".to_string();
                     if (self.instruction.args << i) & 0x04 > 0 || (i == 0 && self.instruction.args & 0x04 == 0) {//arg 0 is always a ref, subsequent are const or ref
-                        let mut s = "".to_string();
-                        let mut v = 0;
-                        match self.instruction.arg[i] {
+                        //let mut s = "".to_string();
+                        //let mut v = 0;
+                        let s = format!("{}",self.get_mem_label(self.instruction.arg[i])); 
+                        let v=self.instruction.arg[i];
+                        /*match self.instruction.arg[i] {
                             RESET_VECTOR => { s = "$RESET".to_string(); },
                             CODE...BSS => { s = format!("LABEL_{:08X}",self.instruction.arg[i]); v=self.instruction.arg[i]; },
                             BSS...REGISTERS => { s = format!("REG_{:08X}",self.instruction.arg[i]); v=self.instruction.arg[i]; },
                             REGISTERS...MEMORY => { s = format!("BSS_{:08X}",self.instruction.arg[i]); v=self.instruction.arg[i]; },
                             MEMORY...STACK => { s = format!("VAR_{:08X}",self.instruction.arg[0]); v=self.instruction.arg[0]; },//heap
                             _ => {},
-                        }
+                        }*/
                         self.instruction.arg_index[i] = CPU::add_new_item(&mut self.data, CPU::new_Item(s, d, v) );
                     }
                     else {
@@ -466,21 +524,25 @@ impl CPU {
 
     pub fn instruction_to_text(&mut self) -> std::string::String {
         let mut s;
+        s = format!("${:04X}:", self.prev_pc);
+        s = format!("{}{}", s, self.get_code_label(self.prev_pc));
+
         match self.instruction.addressing_type {
             ArgumentSize::Int => {
-                s = format!("${:04X}: i{},", self.prev_pc, self.instruction);
-                for i in 0..(self.instruction.size as usize) {
-                    if (self.instruction.args << i) & 0x04 > 0 {
-                        if self.instruction.arg[i] > RESET_VECTOR && self.instruction.arg[i] < CODE {
-                            s = format!("{} Reg[{}]",s,self.instruction.arg[i]); 
-                        }
-                        else {
-                            s = format!("{} [{}]",s,self.instruction.arg[i]);                            
-                        }
-
+                s = format!("{} i{},",s, self.instruction);
+                match self.instruction.opcode {
+                    Op::JMP => {
+                        s = format!("{} {},{}",s,self.get_mem_label(self.instruction.arg[0]),self.instruction.arg[1]); 
                     }
-                    else {
-                        s = format!("{} {}",s,self.instruction.arg[i]);
+                    _ => {
+                        for i in 0..(self.instruction.size as usize) {
+                            if (self.instruction.args << i) & 0x04 > 0 { 
+                                s = format!("{} [{}]",s,self.get_mem_label(self.instruction.arg[i]));                            
+                            }
+                            else {
+                                s = format!("{} {}",s,self.instruction.arg[i]);
+                            }
+                        }
                     }
                 }
                 s = format!("{}\t",s);
@@ -494,15 +556,22 @@ impl CPU {
                 }  
             }   
             ArgumentSize::Byte => {
-                s = format!("${:04X}: b{},", self.prev_pc, self.instruction);
-                for i in 0..(self.instruction.size as usize) {
-                    if (self.instruction.args << i) & 0x04 > 0 {
-                        s = format!("{} [{}]",s,self.instruction.arg[i] as u8);
+                s = format!("{} b{},",s, self.instruction);
+                match self.instruction.opcode {
+                    Op::JMP => {
+                        s = format!("{} {},{}",s,self.get_mem_label(self.instruction.arg[0]),self.instruction.arg[1]); 
                     }
-                    else{
-                        s = format!("{} {}",s,self.instruction.arg[i] as u8);
+                    _ => {
+                        for i in 0..(self.instruction.size as usize) {
+                            if (self.instruction.args << i) & 0x04 > 0 {
+                                s = format!("{} [{}]",s,self.get_mem_label(self.instruction.arg[i] & 0x000000ff));
+                            }
+                            else {
+                                s = format!("{} {}",s,self.instruction.arg[i] as u8);
+                            }
+                        }  
                     }
-                }  
+                }
                 s = format!("{}\t",s);
                 s = format!("{} {:02X}",s,opcodes::get_opcode(self) as u8);
                 for i in 0..(self.instruction.size as usize) {

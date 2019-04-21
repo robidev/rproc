@@ -525,7 +525,8 @@ pub fn push_operand_addr(cpu: &mut cpu::CPU) -> bool {
     for arg_i in 0..cpu.instruction.size {
         match cpu.instruction.addressing_type {
             ArgumentSize::Int => { cpu.write_int_le(cpu.get_pc(),cpu.instruction.arg[arg_i as usize] ); cpu.set_pc( cpu.get_pc() + 4); },
-            ArgumentSize::Byte => { cpu.write_byte(cpu.get_pc(),cpu.instruction.arg[arg_i as usize] as u8); cpu.set_pc( cpu.get_pc() + 1); },//TODO, is this a value(byte), or an address?(int)
+            ArgumentSize::Byte => { cpu.write_byte(cpu.get_pc(),cpu.instruction.arg[arg_i as usize] as u8); cpu.set_pc( cpu.get_pc() + 1); },
+            //TODO^, is this a value(byte), or an address?(int)
         }
     }
     true
