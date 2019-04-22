@@ -155,17 +155,14 @@ impl CPU {
         as_ref!(self.mem_ref).read_int_le(PC_REG)
     }
     
-
     pub fn set_status_flag(&mut self, flag: StatusFlag, value: bool) {
         if value { self.p |=   flag as u8;  }
         else     { self.p &= !(flag as u8); }
     }
 
-
     pub fn get_status_flag(&mut self, flag: StatusFlag) -> bool {
         self.p & flag as u8 != 0x00
     }
-
 
     // these flags will be set in tandem quite often
     pub fn set_zn_flags(&mut self, value: u8) {
@@ -185,7 +182,6 @@ impl CPU {
         // I'm only doing this to avoid dead code warning :)
         self.set_status_flag(StatusFlag::Unused, false);
     }
-
 
     pub fn update(&mut self) {
         match self.state {
@@ -216,7 +212,6 @@ impl CPU {
         }
     }
 
-
     pub fn next_byte(&mut self) -> u8 {
         let mut pc = self.get_pc();
         let op = self.read_byte(pc);
@@ -244,7 +239,6 @@ impl CPU {
         byte
     }
 
-
     pub fn read_int_le(&self, addr: u32) -> u32 {
         as_ref!(self.mem_ref).read_int_le(addr)
     }
@@ -270,6 +264,9 @@ impl CPU {
         opcodes::pull_operand_addr(self);
     }
 
+    /////////////////////////////////////////////////////
+    // debugging functions
+    /////////////////////////////////////////////////////
     pub fn disassemble(&mut self, address: u32) -> u32 {
         //take a memory address
         //return the opcode and arguments
@@ -613,7 +610,7 @@ impl CPU {
         let mut litems: Vec<Items> = Vec::new();
         litems.push(CPU::new_Item("register  (0xF000)".to_string(), " ".to_string(),0));//agree on register range
         litems.push(CPU::new_Item("new const  (code)".to_string(), " ".to_string(),0));//allocate byte or int in code
-        litems.push(CPU::new_Item("new var stack/heap  (0x0000FFFF/0x00010000)".to_string(), " ".to_string(),0));//agree on stack origin (since last call, with unmatched ret.)
+        litems.push(CPU::new_Item("new var  (code/0x10000)".to_string(), " ".to_string(),0));//agree on stack origin (since last call, with unmatched ret.)
         litems.push(CPU::new_Item("new bss  (0xE000)".to_string(), " ".to_string(),0));//allocate static data in bss(memory location)
         litems.push(CPU::new_Item("-existing-".to_string(), " ".to_string(),0));
         litems
@@ -702,6 +699,7 @@ impl CPU {
         litems1
     }
 
+    //parse modification opcode based on arguments 
     pub fn set_opcode(&mut self, cmd : i32, mod1 : i32, mod2 : i32, mod3 : i32) {
         //-1 means not set, so dont modify
         let mut code : u8;
@@ -733,6 +731,7 @@ impl CPU {
         }
     }
 
+    //parse modification arguments from list
     pub fn parse_args(&mut self, arg1 : i32, arg2 : i32, arg3 : i32) {
         //-1 means not set, check with self.data
         if arg1 > 4  && arg1 < self.data.len() as i32 { 

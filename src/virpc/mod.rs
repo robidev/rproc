@@ -65,12 +65,10 @@ impl Virpc {
         virpc
     }
 
-
     pub fn reset(&mut self) {
         self.memory.borrow_mut().reset();
         self.cpu.borrow_mut().reset();
     }
-
 
     pub fn run(&mut self) {
         if !self.powered_on {
@@ -114,9 +112,7 @@ impl Virpc {
         }
     }
 
-
     // *** private functions *** //
-
     // load a *.prg file
     fn load_prg(&mut self, filename: &str) {
         let prg_data = utils::open_file(filename, 0);

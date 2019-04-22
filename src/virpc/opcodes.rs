@@ -86,7 +86,6 @@ impl fmt::Display for Instruction {
     }
 }
 
-
 // runs the instruction
 pub fn run(cpu: &mut cpu::CPU) -> bool {
     match cpu.instruction.opcode {
@@ -420,6 +419,7 @@ pub fn run(cpu: &mut cpu::CPU) -> bool {
     true
 }
 
+//retrieve arguments related to the instruction
 pub fn fetch_operand_addr(cpu: &mut cpu::CPU) -> bool {
     for arg_i in 0..cpu.instruction.size {
         if (cpu.instruction.args << arg_i) & 0x04 > 0 {
@@ -494,6 +494,7 @@ pub fn get_instruction(opcode: u8) -> Option<(Op, u8, u8, ArgumentSize)> {
     })
 }
 
+//convert instruction to opcode
 pub fn get_opcode(cpu: &mut cpu::CPU) -> u8 {
     let mut op_val = match cpu.instruction.opcode {
             Op::JMP => 0x00,
@@ -521,6 +522,7 @@ pub fn get_opcode(cpu: &mut cpu::CPU) -> u8 {
         op_val
 }
 
+//write operands to memory
 pub fn push_operand_addr(cpu: &mut cpu::CPU) -> bool {
     for arg_i in 0..cpu.instruction.size {
         match cpu.instruction.addressing_type {
@@ -532,6 +534,7 @@ pub fn push_operand_addr(cpu: &mut cpu::CPU) -> bool {
     true
 }
 
+//get operands from memory
 pub fn pull_operand_addr(cpu: &mut cpu::CPU) -> bool {
     for arg_i in 0..cpu.instruction.size {
         match cpu.instruction.addressing_type {

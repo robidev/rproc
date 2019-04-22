@@ -30,7 +30,6 @@ fn main() {
     let mut debugger_on  = false;
     let mut window_scale = Scale::X2;
 
-
     // process cmd line params
     for i in 1..args.len() {
         if args[i] == "debugger" {

@@ -8,17 +8,22 @@ static COLOR_PAIR_DEFAULT: i16 = 1;
 static COLOR_PAIR_KEYWORD: i16 = 2;
 static MEMORY_SIZE: u32 = 0x080000;
 
-//TODO define labels: has name, location, size, and highlight current in hexview
-//TODO add new label in code->window
-//TODO add new label in mem/bss->window
+//TODO add new label in code/mem->window (suggest free spot(size 1/4, name:derived), ask name, input size, able to change address)
+//TODO add new label in bss->window (suggest free spot(size 1/4, name:derived), ask name, input size, able to change address, and modify hex value?)
 
-//TODO add search for label in code
-//TODO add search for label in mem/bss (and scroll to current label)
+//TODO add search for label in code -> window(show list of labels, set pc to selected one)
+//TODO add search for label in hex-editor -> window(list of labels, set mem_highlight and mem-address to selected one)
 
+//TODO sound chip
+//TODO keyboard
+//TODO video-improve
+//TODO interrupt?
+//TODO disk?
+
+//Optional:
+//TODO add custom handling of ldr/str arguments, and argument printing
 //TODO add whole memview(separate window)
 //TODO add colorised modified values in hexview
-
-//TODO add custom handling of ldr/str arguments, and argument printing
 
 static EBCDIC: [char;256] = [
     /* 0   1   2   3   4   5   6   7   8   9   A   B   C   D    E   F */
@@ -133,8 +138,7 @@ impl Windows {
         win.items2 = win.cpu_reader.borrow_mut().get_data_list();
         win.items3 = win.cpu_reader.borrow_mut().get_addressing_mode_list();
 
-        win.cpu_reader.borrow_mut().add_new_label("start".to_string(),0x7, 20);
-
+        //win.cpu_reader.borrow_mut().add_new_label("start".to_string(),0x7, 20);
 
         refresh();//needed for win size
         win.menu1 = Windows::create_menu(&mut win.items1,win.win1,0);
@@ -148,8 +152,7 @@ impl Windows {
         win
     }
 
-    pub fn destroy(&mut self)
-    {
+    pub fn destroy(&mut self) {
         Windows::destroy_menu(self.menu1,&mut self.items1);
         Windows::destroy_menu(self.menu2,&mut self.items2);
         Windows::destroy_menu(self.menu3,&mut self.items3);
@@ -163,6 +166,11 @@ impl Windows {
         endwin();
     }
 
+    //////////////////////////////////////////////
+    // Window draw functions
+    //////////////////////////////////////////////
+
+    //window dimensions
     fn wd (&mut self, window : u32, dimension : char) -> i32 {
         let sh = self.screen_height;
         let sw = self.screen_width;
@@ -232,49 +240,7 @@ impl Windows {
 
     }
 
-    fn create_win(s: &str, h: i32,w: i32,x: i32,y: i32) -> WINDOW {
-        let win = newwin(h,w,x,y);
-        box_(win,0,0);
-        mvwprintw(win,0,1,s);
-        wrefresh(win);
-        win
-    }
-
-    fn destroy_win(win: WINDOW) {
-        delwin(win);
-    }
-
-    fn create_menu(items : &mut Vec<ITEM>, win : WINDOW, index : u32) -> MENU {
-        let mut x = 0;
-        let mut y = 0;
-        getmaxyx(win,&mut y,&mut x);
-        let menu = new_menu(items);
-        set_menu_win(menu, win);
-        set_menu_sub(menu, derwin(win,y-2,x-2, 1, 1));
-        set_menu_format(menu,y-2, 1);
-
-        if index < items.len() as u32 {
-            set_current_item(menu, items[index as usize]);
-        }
-        post_menu(menu);
-        wrefresh(win);
-        menu
-    }
-
-    fn destroy_menu(menu : MENU, items : &mut Vec<ITEM>)
-    {
-        unpost_menu(menu);
-        for &item in items.iter() {
-            free_item(item);
-        }
-        delwin(menu_sub(menu));
-        free_menu(menu);
-        drop(menu);
-        
-        items.clear();//clear/drop of items should be after free of menu, to prevent malloc issues
-        drop(items);
-    }
-
+    //call to check if we need to redraw the windows due to a resize
     pub fn resize_check(&mut self) {
         getmaxyx(stdscr(), &mut self.screen_height_n, &mut self.screen_width_n);
         if self.screen_height != self.screen_height_n || self.screen_width != self.screen_width_n {
@@ -312,11 +278,11 @@ impl Windows {
             wresize(self.win5,self.wd(5,'h'), self.wd(5,'w'));
             box_(self.win5,0,0);
 
-            self.update();
+            self.refresh_screen();
         }
     }
 
-    fn update(&mut self) {
+    fn refresh_screen(&mut self) {
         let s = format!("edit:{:08X},current:{:08X} <F5 run/pause> <F6 reset> <F9 breakpoint> <F10 step>",self.edit_line,self.current_pc);
         mvprintw(0,0,s.as_str());
         match self.focus {
@@ -364,7 +330,7 @@ impl Windows {
         wrefresh(self.win3);
         wrefresh(self.win4);
 
-        self.refresh_pad();
+        self.refresh_code();
 
         Windows::destroy_menu(self.menu1, &mut self.items1);
         self.items1 = self.cpu_reader.borrow_mut().get_commands_list();
@@ -381,12 +347,12 @@ impl Windows {
         self.mem_address = self.cpu_reader.borrow_mut().get_data_value(self.menu2_choice);
         match self.cpu_reader.borrow_mut().get_label(self.mem_address) {
             Some(lbl) => { self.mem_highlight = self.mem_address; self.mem_highlight_size = lbl.size; }
-            None => { self.mem_highlight = 0; self.mem_highlight_size = 0; }
+            None => { self.mem_highlight = self.mem_address; self.mem_highlight_size = 1; }
         }
         self.refresh_memview();
     }
 
-    fn refresh_pad(&mut self) {
+    fn refresh_code(&mut self) {
         let mut lpc = 0;
         let mut tpc;
 
@@ -445,15 +411,14 @@ impl Windows {
 
     fn refresh_memview(&mut self) {
         for i in 0..(self.wd(5,'h')-2) {
-            //let mut hex = "".to_string();
-            //let mut asci = "".to_string();
             let w = (self.wd(5,'w')/4)-4;
-            if ( self.mem_address + (i*w) as u32 )  >= MEMORY_SIZE { break; }
+            let mem_address = self.mem_address - (self.mem_address % w as u32);
+            if ( mem_address + (i*w) as u32 )  >= MEMORY_SIZE { break; }
 
-            let s = format!("${:08X} |",self.mem_address + (i*w) as u32);
+            let s = format!("${:08X} |",mem_address + (i*w) as u32);
             mvwprintw(self.win5,i+1,1,s.as_str());
             for j in 0..w {
-                let adr = self.mem_address + ( (i*w) + j ) as u32;
+                let adr = mem_address + ( (i*w) + j ) as u32;
                          
                 if adr >= self.mem_highlight && adr < self.mem_highlight + self.mem_highlight_size {
                     if adr > self.mem_highlight {
@@ -469,40 +434,393 @@ impl Windows {
 
                 let val : u8 = self.cpu_reader.borrow_mut().read_byte(adr);
                 if adr < MEMORY_SIZE {
-                    //hex = format!("{} {:02X}",hex,val);
                     wprintw(self.win5,format!("{:02X}",val).as_str());
-                    //asci = format!("{}{}",asci,EBCDIC[val as usize]);
                 }
                 else {
-                    //hex = format!("{}   ",hex);
                     wprintw(self.win5,"  ");
-                    //asci = format!("{} ",asci);
                 }
-                //if adr >= self.mem_highlight + self.mem_highlight_size {
-                wattrset(self.win5, COLOR_PAIR(1));
-                //}       
+                wattrset(self.win5, COLOR_PAIR(1));     
             }
             wprintw(self.win5," | ");
             for j in 0..w {
-                let adr = self.mem_address + ( (i*w) + j ) as u32;
+                let adr = mem_address + ( (i*w) + j ) as u32;
                 let val : u8 = self.cpu_reader.borrow_mut().read_byte(adr);
                 if adr < MEMORY_SIZE {
-                    //hex = format!("{} {:02X}",hex,val);
-                    //asci = format!("{}{}",asci,EBCDIC[val as usize]);
                     wprintw(self.win5,format!("{}",EBCDIC[val as usize]).as_str());
                 }
                 else {
-                    //hex = format!("{}   ",hex);
-                    //asci = format!("{} ",asci);
                     wprintw(self.win5," ");
                 }
             }
-            //let s = format!("${:08X} |{} | {}",self.mem_address + (i*w) as u32,hex,asci);
-            //mvwprintw(self.win5,i+1,1,s.as_str());
         }
         wrefresh(self.win5);
     }
 
+    ////////////////////////////////////////////
+    // handling of new value
+    ////////////////////////////////////////////
+
+    fn new_val(&mut self) {
+        //and opcode: edit_cmd or (self.cpu_reader.borrow_mut().instruction_u8)
+        let mut code : u8;
+        if self.edit_cmd != -1 { code = self.edit_cmd as u8; }
+        else { code = self.cpu_reader.borrow_mut().instruction_u8 >> 4; }
+        code &= 0x0f;
+
+        match self.edit_item[self.cur_arg as usize] {
+            0 => { self.input_register(); }
+            1 if self.cur_arg == 1 && code == 0x00 => { self.input_jmp_opts(); }
+            //edit cpu-arg and opcode if necesary: self.edit_cmd, self.edit_mode[0], self.edit_mode[1], self.edit_mode[2]
+            /* 2 if self.cur_arg == 1 && code == 0x0a  => {//ldr
+            }
+            2 if self.cur_arg == 2 && code == 0x0a=> {//ldr
+            }
+            2 if self.cur_arg == 1 && code == 0x0b=> {//str
+            }
+            2 if self.cur_arg == 2 && code == 0x0b=> {//str
+            }*/            
+            2 if self.cur_arg == 1 && code == 0x01 => {//call or jmp
+                self.input_label(); //BOTH refresh_screen code for help              
+            }
+            2 => { self.input_label(); }//mem
+            3 => { self.input_bss(); }
+            _ => {
+                self.input_value();
+            },
+        }
+        self.edit_item[self.cur_arg as usize] = -1;
+    }
+
+    fn input_jmp_opts(&mut self) {
+        let mut screen_height = 0;
+        let mut screen_width = 0;
+        getmaxyx(stdscr(), &mut screen_height, &mut screen_width);
+        let lwin_menu = Windows::create_win(" ",self.wd(3,'h'), self.wd(3,'w'), self.wd(3,'y'), self.wd(3,'x'));
+
+        let s;
+        let v;
+        let d = " ".to_string();
+
+        mvwprintw(lwin_menu,0,1," select  jump options ");
+        let mut items = self.cpu_reader.borrow_mut().jmp_opts();
+        let mut select :i32 = 0;
+        let menu = Windows::create_menu(&mut items,lwin_menu,select as u32);
+        //provide menu with all jmp options
+        //use self.edit_item[self.cur_arg as usize] to determine the menu-option
+        wrefresh(lwin_menu);
+        let mut ch = getch();
+        while ch != 27 as i32 { // ESC pressed, so quit
+            match ch {
+                KEY_UP => {
+                    menu_driver(menu, REQ_UP_ITEM);
+                    wrefresh(lwin_menu);
+                }
+                KEY_DOWN => {
+                    menu_driver(menu, REQ_DOWN_ITEM);
+                    wrefresh(lwin_menu);
+                }
+                0xa => {
+                    select = item_index(current_item(menu));
+                    s = format!("CONST_{}",select);
+                    v = select as u32;
+                    self.edit_mode[1] = 0;
+                    self.edit_item[self.cur_arg as usize] = cpu::CPU::add_new_item(&mut self.cpu_reader.borrow_mut().data, cpu::CPU::new_Item(s, d, v) ) as i32;
+                    self.modify();
+                    break;
+                }
+                _ => {
+                    menu_driver(menu, ch);
+                    wrefresh(lwin_menu);
+                }
+            }
+            ch = getch();
+        }
+        Windows::destroy_menu(menu,&mut items);
+        Windows::destroy_win(lwin_menu);
+    }
+
+    fn input_register(&mut self) {
+        let mut screen_height = 0;
+        let mut screen_width = 0;
+        getmaxyx(stdscr(), &mut screen_height, &mut screen_width);
+        let lwin_menu = Windows::create_win(" ",self.wd(3,'h'), self.wd(3,'w'), self.wd(3,'y'), self.wd(3,'x'));
+
+        let s;
+        let v;
+        let d = " ".to_string();
+
+        mvwprintw(lwin_menu,0,1," select register ");
+        let mut items = self.cpu_reader.borrow_mut().reg_opts();
+        let mut select :i32 = 0;
+        let menu = Windows::create_menu(&mut items,lwin_menu,select as u32);
+        wrefresh(lwin_menu);
+        let mut ch = getch();
+        while ch != 27 as i32 { // ESC pressed, so quit
+            match ch {
+                KEY_UP => {
+                    menu_driver(menu, REQ_UP_ITEM);
+                    wrefresh(lwin_menu);
+                }
+                KEY_DOWN => {
+                    menu_driver(menu, REQ_DOWN_ITEM);
+                    wrefresh(lwin_menu);
+                }
+                0xa => {
+                    select = item_index(current_item(menu));
+                    s = format!("REG_{}",select);
+                    v = ((select * 4)+0xF000) as u32;
+                    //write direct (cur_arg = 0) or indirect (cur_arg = 1)
+                    if self.cur_arg == 0 { self.edit_mode[0] = 0; }
+                    else { self.edit_mode[self.cur_arg as usize] = 1; }
+
+                    self.edit_item[self.cur_arg as usize] = cpu::CPU::add_new_item(&mut self.cpu_reader.borrow_mut().data, cpu::CPU::new_Item(s, d, v) ) as i32;
+                    self.modify();
+                    break;
+                }
+                _ => {
+                    menu_driver(menu, ch);
+                    wrefresh(lwin_menu);
+                }
+            }
+            ch = getch();
+        }
+        Windows::destroy_menu(menu,&mut items);
+        Windows::destroy_win(lwin_menu);
+    }
+
+    fn input_value(&mut self) {
+        //menu for a new value based on argument-index (self.cur_arg) 
+        //new window, asking to input a value
+        let mut screen_height = 0;
+        let mut screen_width = 0;
+        getmaxyx(stdscr(), &mut screen_height, &mut screen_width);
+        let lwin_menu = Windows::create_win(" ",self.wd(3,'h'), self.wd(3,'w'), self.wd(3,'y'), self.wd(3,'x'));
+
+        let s;
+        let v;
+        let d = " ".to_string();
+        mvwprintw(lwin_menu,0,1," input a number ");
+        mvwprintw(lwin_menu,2,1," input:");
+        wrefresh(lwin_menu);
+        curs_set(CURSOR_VISIBILITY::CURSOR_VISIBLE);
+        wrefresh(lwin_menu);
+        let mut val : String = String::from("");
+        let mut ch = 0;//getch();
+        while ch != 27 as i32 { // ESC pressed, so quit
+            //hex or normal
+            ch = getch();
+            match ch {
+                //KEY_LEFT => {}
+                //KEY_RIGHT => {}
+                0xa => {//enter
+                    if val.len() > 2 && val.as_bytes()[0] == 0x30 && (val.as_bytes()[1] == 0x58 || val.as_bytes()[1] == 0x78) {
+                        let without_prefix = val.trim_left_matches("0x");
+                        v = u32::from_str_radix(without_prefix, 16).unwrap();
+                    }
+                    else {
+                        v = u32::from_str_radix(val.as_str(), 10).unwrap();
+                    }
+                    s = format!("CONST_{}",v);
+                    self.edit_item[self.cur_arg as usize] = cpu::CPU::add_new_item(&mut self.cpu_reader.borrow_mut().data, cpu::CPU::new_Item(s, d, v) ) as i32;
+                    self.modify();
+                    break;
+                } 
+                0x107 => {//backspace
+                    val.pop();
+                }
+                _ => {
+                    let key = (ch as u8) as char;
+                    if ( key.is_ascii_hexdigit() || ch==0x78 || ch==0x58 ) && val.len() < 10 {
+                        val.push(key);
+                    }
+                }
+            }
+            mvwprintw(lwin_menu,2,8,"          ");
+            mvwprintw(lwin_menu,2,8,val.as_str());
+            wrefresh(lwin_menu);
+        }
+        curs_set(CURSOR_VISIBILITY::CURSOR_INVISIBLE);
+        Windows::destroy_win(lwin_menu);
+    }
+
+    fn input_bss(&mut self) {//bss or mem
+        //TODO add new label in code->window (suggest free spot(size 1/4, name:derived), ask name, input size, able to change address)
+        //TODO add new label in mem/bss->window (suggest free spot(size 1/4, name:derived), ask name, input size, able to change address)
+        //window with suggested address
+        //dialog for BSS: select an address (provide suggestions based on labels)
+        //call cpu for list of labels in range bss
+        //OR input value (and add new label)
+        //BOTH refresh_screen memview for help
+        let mut screen_height = 0;
+        let mut screen_width = 0;
+        getmaxyx(stdscr(), &mut screen_height, &mut screen_width);
+        let lwin_menu = Windows::create_win(" ",self.wd(3,'h'), self.wd(3,'w'), self.wd(3,'y'), self.wd(3,'x'));
+        mvwprintw(lwin_menu,0,1," add a bss item");
+        mvwprintw(lwin_menu,2,1," address:");
+        mvwprintw(lwin_menu,3,1," name:");
+        mvwprintw(lwin_menu,4,1," size:");
+        mvwprintw(lwin_menu,5,1," data:");
+        wrefresh(lwin_menu);
+        curs_set(CURSOR_VISIBILITY::CURSOR_VISIBLE);
+        wrefresh(lwin_menu);
+        let mut s;
+        let d = "".to_string();
+        let v;
+        let mut val : String = String::from("");
+        let mut ch = 0;//getch();
+        while ch != 27 as i32 { // ESC pressed, so quit
+            //hex or normal
+            ch = getch();
+            match ch {
+                //KEY_LEFT => {}
+                //KEY_RIGHT => {}
+                0xa => {//enter
+                    if val.len() > 2 && val.as_bytes()[0] == 0x30 && (val.as_bytes()[1] == 0x58 || val.as_bytes()[1] == 0x78) {
+                        let without_prefix = val.trim_left_matches("0x");
+                        v = u32::from_str_radix(without_prefix, 16).unwrap();
+                    }
+                    else {
+                        v = u32::from_str_radix(val.as_str(), 10).unwrap();
+                    }
+                    s = format!("CONST_{}",v);
+                    self.edit_item[self.cur_arg as usize] = cpu::CPU::add_new_item(&mut self.cpu_reader.borrow_mut().data, cpu::CPU::new_Item(s, d, v) ) as i32;
+                    self.modify();
+                    break;
+                } 
+                0x107 => {//backspace
+                    val.pop();
+                }
+                _ => {
+                    let key = (ch as u8) as char;
+                    if ( key.is_ascii_hexdigit() || ch==0x78 || ch==0x58 ) && val.len() < 10 {
+                        val.push(key);
+                    }
+                }
+            }
+            mvwprintw(lwin_menu,2,8,"          ");
+            mvwprintw(lwin_menu,2,8,val.as_str());
+            wrefresh(lwin_menu);
+        }
+        curs_set(CURSOR_VISIBILITY::CURSOR_INVISIBLE);
+        Windows::destroy_win(lwin_menu);
+    }
+
+    fn input_label(&mut self) {//code or mem
+        //dialog for new heap: select an address (provide suggestions, based on labels)
+        //call cpu for list of labels in range mem
+        //OR input value (and add new label)
+        //BOTH refresh_screen memview for help
+        //TODO add new label in code->window (suggest free spot(size 1/4, name:derived), ask name, input size, able to change address)
+        //TODO add new label in mem/bss->window (suggest free spot(size 1/4, name:derived), ask name, input size, able to change address)
+        //window with suggested address
+        let mut screen_height = 0;
+        let mut screen_width = 0;
+        getmaxyx(stdscr(), &mut screen_height, &mut screen_width);
+        let lwin_menu = Windows::create_win(" ",self.wd(3,'h'), self.wd(3,'w'), self.wd(3,'y'), self.wd(3,'x'));
+        mvwprintw(lwin_menu,0,1," add a label <CODE/MEM> ");
+        mvwprintw(lwin_menu,2,1," address:");
+        mvwprintw(lwin_menu,3,1," name:");
+        mvwprintw(lwin_menu,4,1," size:");
+        wrefresh(lwin_menu);
+        curs_set(CURSOR_VISIBILITY::CURSOR_VISIBLE);
+        wrefresh(lwin_menu);
+        let mut s;
+        let d = "".to_string();
+        let v;
+        let mut val : String = String::from("");
+        let mut ch = 0;//getch();
+        while ch != 27 as i32 { // ESC pressed, so quit
+            //hex or normal
+            ch = getch();
+            match ch {
+                //KEY_LEFT => {}
+                //KEY_RIGHT => {}
+                0xa => {//enter
+                    if val.len() > 2 && val.as_bytes()[0] == 0x30 && (val.as_bytes()[1] == 0x58 || val.as_bytes()[1] == 0x78) {
+                        let without_prefix = val.trim_left_matches("0x");
+                        v = u32::from_str_radix(without_prefix, 16).unwrap();
+                    }
+                    else {
+                        v = u32::from_str_radix(val.as_str(), 10).unwrap();
+                    }
+                    s = format!("CONST_{}",v);
+                    self.edit_item[self.cur_arg as usize] = cpu::CPU::add_new_item(&mut self.cpu_reader.borrow_mut().data, cpu::CPU::new_Item(s, d, v) ) as i32;
+                    self.modify();
+                    break;
+                } 
+                0x107 => {//backspace
+                    val.pop();
+                }
+                _ => {
+                    let key = (ch as u8) as char;
+                    if ( key.is_ascii_hexdigit() || ch==0x78 || ch==0x58 ) && val.len() < 10 {
+                        val.push(key);
+                    }
+                }
+            }
+            mvwprintw(lwin_menu,2,8,"          ");
+            mvwprintw(lwin_menu,2,8,val.as_str());
+            wrefresh(lwin_menu);
+        }
+        curs_set(CURSOR_VISIBILITY::CURSOR_INVISIBLE);
+        Windows::destroy_win(lwin_menu);
+    }
+
+    //find labels in code or mem
+    fn search_label(&mut self) {
+        //TODO add search for label in code -> window(show list of labels, set pc to selected one)
+        //TODO add search for label in hex-editor -> window(list of labels, set mem_highlight and mem-address to selected one)
+        //window with list of labels (code:/bss:/mem:), possibly filter?
+        //
+                //menu for a new value based on argument-index (self.cur_arg) 
+        //new window, asking to input a value
+        let mut screen_height = 0;
+        let mut screen_width = 0;
+        getmaxyx(stdscr(), &mut screen_height, &mut screen_width);
+        let lwin_menu = Windows::create_win(" ",self.wd(3,'h'), self.wd(3,'w'), self.wd(3,'y'), self.wd(3,'x'));
+        mvwprintw(lwin_menu,0,1," search label <CODE/MEM>");
+        let mut items = Vec::new();//self.cpu_reader.borrow_mut().reg_opts();
+        let mut select :i32 = 0;
+        let menu = Windows::create_menu(&mut items,lwin_menu,select as u32);
+        wrefresh(lwin_menu);
+        let s;
+        let d = "".to_string();
+        let v;
+        let mut ch = getch();
+        while ch != 27 as i32 { // ESC pressed, so quit
+            match ch {
+                KEY_UP => {
+                    menu_driver(menu, REQ_UP_ITEM);
+                    wrefresh(lwin_menu);
+                }
+                KEY_DOWN => {
+                    menu_driver(menu, REQ_DOWN_ITEM);
+                    wrefresh(lwin_menu);
+                }
+                0xa => {
+                    select = item_index(current_item(menu));
+                    s = format!("REG_{}",select);
+                    v = ((select * 4)+0xF000) as u32;
+                    //write direct (cur_arg = 0) or indirect (cur_arg = 1)
+                    if self.cur_arg == 0 { self.edit_mode[0] = 0; }
+                    else { self.edit_mode[self.cur_arg as usize] = 1; }
+
+                    self.edit_item[self.cur_arg as usize] = cpu::CPU::add_new_item(&mut self.cpu_reader.borrow_mut().data, cpu::CPU::new_Item(s, d, v) ) as i32;
+                    self.modify();
+                    break;
+                }
+                _ => {
+                    menu_driver(menu, ch);
+                    wrefresh(lwin_menu);
+                }
+            }
+            ch = getch();
+        }
+        Windows::destroy_menu(menu,&mut items);
+        Windows::destroy_win(lwin_menu);
+    }
+
+    //modify values based on sub-meny
     fn modify(&mut self) {
         //take all current settings from menu 1, 2 and 3
         self.cpu_reader.borrow_mut().set_opcode(self.edit_cmd, self.edit_mode[0], self.edit_mode[1], self.edit_mode[2]);
@@ -512,179 +830,7 @@ impl Windows {
         self.cpu_reader.borrow_mut().assemble();
     }
 
-    fn new_val(&mut self) {
-        //menu for a new value based on argument-index (self.cur_arg) 
-        //new window, asking to input a value
-        let mut screen_height = 0;
-        let mut screen_width = 0;
-        getmaxyx(stdscr(), &mut screen_height, &mut screen_width);
-        let lwin_menu = Windows::create_win(" ",screen_height/2, screen_width/2, screen_height/4, screen_width/4);
-
-        let s;
-        let v;
-        let d = " ".to_string();
-
-        //and opcode: edit_cmd or (self.cpu_reader.borrow_mut().instruction_u8)
-        let mut code : u8;
-        if self.edit_cmd != -1 { code = self.edit_cmd as u8; }
-        else { code = self.cpu_reader.borrow_mut().instruction_u8 >> 4; }
-        code &= 0x0f;
-
-        match self.edit_item[self.cur_arg as usize] {
-            0 => {
-                mvwprintw(lwin_menu,0,1," select register ");
-                let mut items = self.cpu_reader.borrow_mut().reg_opts();
-                let mut select :i32 = 0;
-                let menu = Windows::create_menu(&mut items,lwin_menu,select as u32);
-                wrefresh(lwin_menu);
-                let mut ch = getch();
-                while ch != 27 as i32 { // ESC pressed, so quit
-                    match ch {
-                        KEY_UP => {
-                            menu_driver(menu, REQ_UP_ITEM);
-                            wrefresh(lwin_menu);
-                        }
-                        KEY_DOWN => {
-                            menu_driver(menu, REQ_DOWN_ITEM);
-                            wrefresh(lwin_menu);
-                        }
-                        0xa => {
-                            select = item_index(current_item(menu));
-                            s = format!("REG_{}",select);
-                            v = ((select * 4)+0xF000) as u32;
-                            //write direct (cur_arg = 0) or indirect (cur_arg = 1)
-                            if self.cur_arg == 0 { self.edit_mode[0] = 0; }
-                            else { self.edit_mode[self.cur_arg as usize] = 1; }
-
-                            self.edit_item[self.cur_arg as usize] = cpu::CPU::add_new_item(&mut self.cpu_reader.borrow_mut().data, cpu::CPU::new_Item(s, d, v) ) as i32;
-                            self.modify();
-                            break;
-                        }
-                        _ => {
-                            menu_driver(menu, ch);
-                            wrefresh(lwin_menu);
-                        }
-                    }
-                    ch = getch();
-                }
-                Windows::destroy_menu(menu,&mut items);
-            }
-            1 if self.cur_arg == 1 && code == 0x00 => {//jmp
-                mvwprintw(lwin_menu,0,1," select  jump options ");
-                let mut items = self.cpu_reader.borrow_mut().jmp_opts();
-                let mut select :i32 = 0;
-                let menu = Windows::create_menu(&mut items,lwin_menu,select as u32);
-                //provide menu with all jmp options
-                //use self.edit_item[self.cur_arg as usize] to determine the menu-option
-                wrefresh(lwin_menu);
-                let mut ch = getch();
-                while ch != 27 as i32 { // ESC pressed, so quit
-                    match ch {
-                        KEY_UP => {
-                            menu_driver(menu, REQ_UP_ITEM);
-                            wrefresh(lwin_menu);
-                        }
-                        KEY_DOWN => {
-                            menu_driver(menu, REQ_DOWN_ITEM);
-                            wrefresh(lwin_menu);
-                        }
-                        0xa => {
-                            select = item_index(current_item(menu));
-                            s = format!("CONST_{}",select);
-                            v = select as u32;
-                            self.edit_mode[1] = 0;
-                            self.edit_item[self.cur_arg as usize] = cpu::CPU::add_new_item(&mut self.cpu_reader.borrow_mut().data, cpu::CPU::new_Item(s, d, v) ) as i32;
-                            self.modify();
-                            break;
-                        }
-                        _ => {
-                            menu_driver(menu, ch);
-                            wrefresh(lwin_menu);
-                        }
-                    }
-                    ch = getch();
-                }
-                Windows::destroy_menu(menu,&mut items);
-            }/*
-            1 if self.cur_arg == 1 && code == 0x01 => {//call or jmp
-                //dialog for call: select an address (provide suggestions, based on labels)
-                call cpu for list of labels in range code
-                OR input value (and add new label)
-                BOTH update code for help
-            }
-            2 => {
-                //dialog for new heap: select an address (provide suggestions, based on labels)
-                call cpu for list of labels in range mem
-                OR input value (and add new label)
-                BOTH update memview for help
-            }
-            3 => {
-                //dialog for BSS: select an address (provide suggestions based on labels)
-                call cpu for list of labels in range bss
-                OR input value (and add new label)
-                BOTH update memview for help
-            }
-
-
-            2 if self.cur_arg == 1 && code == 0x0a  => {//ldr
-                //edit cpu-arg and opcode if necesary
-                //self.edit_cmd, self.edit_mode[0], self.edit_mode[1], self.edit_mode[2]
-            }
-            2 if self.cur_arg == 2 && code == 0x0a=> {//ldr
-            }
-            2 if self.cur_arg == 1 && code == 0x0b=> {//str
-            }
-            2 if self.cur_arg == 2 && code == 0x0b=> {//str
-            }*/
-            _ => {
-                mvwprintw(lwin_menu,0,1," input a number ");
-                mvwprintw(lwin_menu,2,1," input:");
-                wrefresh(lwin_menu);
-                curs_set(CURSOR_VISIBILITY::CURSOR_VISIBLE);
-                wrefresh(lwin_menu);
-                let mut val : String = String::from("");
-                let mut ch = 0;//getch();
-                while ch != 27 as i32 { // ESC pressed, so quit
-                    //hex or normal
-                    ch = getch();
-                    match ch {
-                        //KEY_LEFT => {}
-                        //KEY_RIGHT => {}
-                        0xa => {//enter
-                            if val.len() > 2 && val.as_bytes()[0] == 0x30 && (val.as_bytes()[1] == 0x58 || val.as_bytes()[1] == 0x78) {
-                                let without_prefix = val.trim_left_matches("0x");
-                                v = u32::from_str_radix(without_prefix, 16).unwrap();
-                            }
-                            else {
-                                v = u32::from_str_radix(val.as_str(), 10).unwrap();
-                            }
-                            s = format!("CONST_{}",v);
-                            self.edit_item[self.cur_arg as usize] = cpu::CPU::add_new_item(&mut self.cpu_reader.borrow_mut().data, cpu::CPU::new_Item(s, d, v) ) as i32;
-                            self.modify();
-                            break;
-                        } 
-                        0x107 => {//backspace
-                            val.pop();
-                        }
-                        _ => {
-                            let key = (ch as u8) as char;
-                            if ( key.is_ascii_hexdigit() || ch==0x78 || ch==0x58 ) && val.len() < 10 {
-                                val.push(key);
-                            }
-                        }
-                    }
-                    mvwprintw(lwin_menu,2,8,"          ");
-                    mvwprintw(lwin_menu,2,8,val.as_str());
-                    wrefresh(lwin_menu);
-                }
-                curs_set(CURSOR_VISIBILITY::CURSOR_INVISIBLE);
-            },
-        }
-
-        Windows::destroy_win(lwin_menu);
-        self.edit_item[self.cur_arg as usize] = -1;
-    }
-
+    //reset modify values
     fn reset_edit(&mut self) {
         self.edit_cmd = -1;
         self.edit_item[0] = -1;
@@ -694,9 +840,9 @@ impl Windows {
         self.edit_mode[1] = -1;
         self.edit_mode[2] = -1;
     }
-    //
+    ///////////////////////////////////////////
     // key event handler
-    //
+    ///////////////////////////////////////////
     pub fn handle_keys(&mut self, ch : i32) {
         match ch {
             0x09 => {
@@ -704,7 +850,7 @@ impl Windows {
                 if self.focus > 4 {
                     self.focus = 0;
                 }
-                self.update();
+                self.refresh_screen();
             }
             0xa => {
                 if self.edit_item[self.cur_arg as usize] > -1 && self.edit_item[self.cur_arg as usize] < 4 {
@@ -713,7 +859,7 @@ impl Windows {
                 else {
                     self.modify();//edit the current value
                 }
-                self.screen_height = 0;//trigger an update
+                self.screen_height = 0;//trigger an refresh_screen
                 self.resize_check();//show the edited value
             }
             _ => {
@@ -756,12 +902,12 @@ impl Windows {
                    self.edit_line -= 1; 
                 }
                 self.reset_edit();
-                self.update();
+                self.refresh_screen();
             }
             KEY_DOWN => {
                 self.edit_line += 1;
                 self.reset_edit();
-                self.update();
+                self.refresh_screen();
             }
             _ => {
             }
@@ -783,13 +929,13 @@ impl Windows {
             KEY_LEFT => {
                 if self.cur_arg > 0 {
                     self.cur_arg -= 1;
-                    self.update();
+                    self.refresh_screen();
                 }
             }
             KEY_RIGHT => {
                 if self.cur_arg < 2 {
                     self.cur_arg += 1;
-                    self.update();                    
+                    self.refresh_screen();                    
                 }
             }
             _ => {
@@ -968,5 +1114,50 @@ impl Windows {
                 self.refresh_memview();
             }
         }
+    }
+
+    ////////////////////////////////////////////
+    // static ui create/destroy helper functions
+    ////////////////////////////////////////////
+    fn create_win(s: &str, h: i32,w: i32,x: i32,y: i32) -> WINDOW {
+        let win = newwin(h,w,x,y);
+        box_(win,0,0);
+        mvwprintw(win,0,1,s);
+        wrefresh(win);
+        win
+    }
+
+    fn destroy_win(win: WINDOW) {
+        delwin(win);
+    }
+
+    fn create_menu(items : &mut Vec<ITEM>, win : WINDOW, index : u32) -> MENU {
+        let mut x = 0;
+        let mut y = 0;
+        getmaxyx(win,&mut y,&mut x);
+        let menu = new_menu(items);
+        set_menu_win(menu, win);
+        set_menu_sub(menu, derwin(win,y-2,x-2, 1, 1));
+        set_menu_format(menu,y-2, 1);
+
+        if index < items.len() as u32 {
+            set_current_item(menu, items[index as usize]);
+        }
+        post_menu(menu);
+        wrefresh(win);
+        menu
+    }
+
+    fn destroy_menu(menu : MENU, items : &mut Vec<ITEM>) {
+        unpost_menu(menu);
+        for &item in items.iter() {
+            free_item(item);
+        }
+        delwin(menu_sub(menu));
+        free_menu(menu);
+        drop(menu);
+        
+        items.clear();//clear/drop of items should be after free of menu, to prevent malloc issues
+        drop(items);
     }
 }

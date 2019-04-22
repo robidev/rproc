@@ -86,7 +86,6 @@ impl Memory {
         }))
     }
     
-
     // returns memory bank for current latch setting and address
     pub fn get_bank(&mut self, addr: u32) -> (&mut MemBank) {
         const RAMSIZE: u32 = (MEM_SIZE-1) as u32;
@@ -97,7 +96,6 @@ impl Memory {
         }
     }
 
-
     // returns specific modifiable memory bank
     pub fn get_ram_bank(&mut self, bank_type: MemType) -> (&mut MemBank) {
         match bank_type {
@@ -107,25 +105,21 @@ impl Memory {
         }
     }   
     
-
     pub fn reset(&mut self) {
         self.write_byte(0x0000, 0xFF);
         self.write_byte(0x0001, 0x07); // enable kernal, chargen and basic ROMs
     }
 
-    
     // Write a byte to memory - returns whether RAM was written (true) or RAM under ROM (false)
     pub fn write_byte(&mut self, addr: u32, value: u8) -> bool {
         self.get_bank(addr).write(addr, value);
         return true;
     }
     
-
     // Read a byte from memory
     pub fn read_byte(&mut self, addr: u32) -> u8 {
         self.get_bank(addr).read(addr)
     }
-
 
     // Read a word from memory (stored in little endian)
     pub fn read_int_le(&mut self, addr: u32) -> u32 {
@@ -157,7 +151,6 @@ impl Memory {
         bank.write(addr + 0x0003,(value_be & 0x000000FF) as u8);
         true
     }
-
 
     // *** private functions *** //
 }
