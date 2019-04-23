@@ -91,62 +91,6 @@ impl CPU {
         self.mem_ref = Some(memref);
     }    
 
-    pub fn add_new_label(&mut self, tag : String, adr: u32, size : u32) -> u32 {
-        for i in 0..self.labels.len() {
-            if self.labels[i as usize].address == adr {
-                self.labels[i as usize].tag = tag;
-                self.labels[i as usize].size = size;
-                return i as u32;
-            } 
-        }
-        let ll = Label {
-            tag : tag,
-            address : adr,
-            size : size,
-        };
-        self.labels.push(ll);
-        self.labels.sort();
-        self.labels.len() as u32
-    }
-
-    pub fn get_label(&mut self, adr: u32) -> Option<Label> {
-        for ll in self.labels.iter() {
-            if ll.address == adr {
-                let tmp = Label {
-                    tag : ll.tag.clone(),
-                    address : adr,
-                    size : ll.size,
-                };
-                return Some(tmp);
-            }
-        }
-        None
-    }
-
-    pub fn get_mem_label(&mut self, adr: u32) -> String {
-        let result = self.get_label(adr);
-        match result {
-            Some(lbl) => { format!("{}", lbl.tag).to_string() }
-            None => { 
-                match adr {
-                    0...BSS => {format!("LBL_{}",adr).to_string()},
-                    BSS...REGISTERS => {format!("BSS_{}",adr).to_string()},
-                    REGISTERS...MEMORY => {format!("REG_{}",adr).to_string()},
-                    MEMORY...STACK => {format!("VAR_{}",adr).to_string()},
-                    _ => {format!("adr_{}",adr).to_string()},
-                }
-            }
-        }
-    }
-
-    pub fn get_code_label(&mut self, adr: u32) -> String {
-        let result = self.get_label(adr);
-        match result {
-            Some(lbl) => { format!("{}\t", lbl.tag).to_string() }
-            None => { format!("\t\t").to_string() }
-        }
-    }
-
     pub fn set_pc(&self, pc : u32) {
         as_ref!(self.mem_ref).write_int_le(PC_REG,pc);
     }
@@ -610,7 +554,7 @@ impl CPU {
         let mut litems: Vec<Items> = Vec::new();
         litems.push(CPU::new_Item("register  (0xF000)".to_string(), " ".to_string(),0));//agree on register range
         litems.push(CPU::new_Item("new const  (code)".to_string(), " ".to_string(),0));//allocate byte or int in code
-        litems.push(CPU::new_Item("new var  (code/0x10000)".to_string(), " ".to_string(),0));//agree on stack origin (since last call, with unmatched ret.)
+        litems.push(CPU::new_Item("new label/var  (code/0x10000)".to_string(), " ".to_string(),0));//agree on stack origin (since last call, with unmatched ret.)
         litems.push(CPU::new_Item("new bss  (0xE000)".to_string(), " ".to_string(),0));//allocate static data in bss(memory location)
         litems.push(CPU::new_Item("-existing-".to_string(), " ".to_string(),0));
         litems
@@ -743,5 +687,107 @@ impl CPU {
         if arg3 > 4  && arg3 < self.data.len() as i32 { 
             self.instruction.arg[2] = self.data[arg3 as usize].value;
         }
+    }
+
+    pub fn add_new_label(&mut self, tag : String, adr: u32, size : u32) -> u32 {
+        for i in 0..self.labels.len() {
+            if self.labels[i as usize].address == adr {
+                self.labels[i as usize].tag = tag;
+                self.labels[i as usize].size = size;
+                return i as u32;
+            } 
+        }
+        let ll = Label {
+            tag : tag,
+            address : adr,
+            size : size,
+        };
+        self.labels.push(ll);
+        self.labels.sort();
+        self.labels.len() as u32
+    }
+
+    pub fn get_label(&mut self, adr: u32) -> Option<Label> {
+        for ll in self.labels.iter() {
+            if ll.address == adr {
+                let tmp = Label {
+                    tag : ll.tag.clone(),
+                    address : adr,
+                    size : ll.size,
+                };
+                return Some(tmp);
+            }
+        }
+        None
+    }
+
+    pub fn get_mem_label(&mut self, adr: u32) -> String {
+        let result = self.get_label(adr);
+        match result {
+            Some(lbl) => { format!("{}", lbl.tag).to_string() }
+            None => { 
+                match adr {
+                    0...BSS => {format!("LBL_{}",adr).to_string()},
+                    BSS...REGISTERS => {format!("BSS_{}",adr).to_string()},
+                    REGISTERS...MEMORY => {format!("REG_{}",adr).to_string()},
+                    MEMORY...STACK => {format!("VAR_{}",adr).to_string()},
+                    _ => {format!("adr_{}",adr).to_string()},
+                }
+            }
+        }
+    }
+
+    pub fn get_code_label(&mut self, adr: u32) -> String {
+        let result = self.get_label(adr);
+        match result {
+            Some(lbl) => { format!("{}\t", lbl.tag).to_string() }
+            None => { format!("\t\t").to_string() }
+        }
+    }
+
+    pub fn get_code_label_list(&mut self) ->  Vec<ITEM> {
+        let mut litems_d: Vec<ITEM> = Vec::new();
+        for it in self.labels.iter() {
+            if it.address < BSS {
+                litems_d.push(new_item(it.tag.as_bytes() , it.address.to_string().as_bytes() ));
+            }
+        }
+        litems_d
+    }
+
+    pub fn get_mem_label_list(&mut self) ->  Vec<ITEM> {
+        let mut litems_d: Vec<ITEM> = Vec::new();
+        for it in self.labels.iter() {
+            if it.address >= BSS {
+                litems_d.push(new_item(it.tag.as_bytes() , it.address.to_string().as_bytes() ));
+            }
+        }
+        litems_d
+    }
+
+    pub fn get_free_bss(&mut self) -> u32 {
+        let mut adr = BSS;
+        for it in self.labels.iter() {
+            if it.address >= BSS && it.address < REGISTERS {
+                adr = it.address + it.size;
+            }
+        }
+        if adr >= REGISTERS {
+            adr = 0;//could not allocate a free location
+        }
+        adr
+    }
+
+    pub fn get_free_mem(&mut self) -> u32 {
+        let mut adr = MEMORY;
+        for it in self.labels.iter() {
+            if it.address >= MEMORY && it.address < STACK {
+                adr = it.address + it.size;
+            }
+        }
+        if adr >= STACK {
+            adr = 0;//could not allocate a free location
+        }
+        adr
     }
 }

@@ -55,6 +55,18 @@ pub fn memset8(buffer: &mut [u32], start: usize, value: u32) {
     buffer[start+7] = buffer[start];
 }
 
+pub fn transform_u32_to_array_of_u8(x:u32) -> [u8;4] {
+    let b1 : u8 = ((x >> 24) & 0xff) as u8;
+    let b2 : u8 = ((x >> 16) & 0xff) as u8;
+    let b3 : u8 = ((x >> 8) & 0xff) as u8;
+    let b4 : u8 = (x & 0xff) as u8;
+    return [b1, b2, b3, b4]
+}
+
+pub fn transform_array_of_u8_to_u32(x: &[u8;4]) -> u32 {
+    let u : u32 = (((x[0] as u32) << 24) & 0xff000000) | (((x[1] as u32) << 16) & 0x00ff0000) | (((x[2] as u32) << 8) & 0x0000ff00) | ((x[3]as u32) & 0x000000ff);
+    return u
+}
 
 pub fn fetch_c64_color_rgba(idx: u8) -> u32 {
     // palette RGB values copied from WinVICE

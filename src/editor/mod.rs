@@ -1,5 +1,6 @@
 use ncurses::*;
 use crate::virpc::cpu;
+use crate::utils;
 
 static COLOR_BACKGROUND: i16 = 16;
 static COLOR_FOREGROUND: i16 = 17;
@@ -138,7 +139,9 @@ impl Windows {
         win.items2 = win.cpu_reader.borrow_mut().get_data_list();
         win.items3 = win.cpu_reader.borrow_mut().get_addressing_mode_list();
 
-        //win.cpu_reader.borrow_mut().add_new_label("start".to_string(),0x7, 20);
+        win.cpu_reader.borrow_mut().add_new_label("reset".to_string(),0x0, 1);
+        win.cpu_reader.borrow_mut().add_new_label("bss_one".to_string(),0xe000, 1);
+        win.cpu_reader.borrow_mut().add_new_label("bss2".to_string(),0xe004, 1);
 
         refresh();//needed for win size
         win.menu1 = Windows::create_menu(&mut win.items1,win.win1,0);
@@ -480,10 +483,14 @@ impl Windows {
             2 if self.cur_arg == 2 && code == 0x0b=> {//str
             }*/            
             2 if self.cur_arg == 1 && code == 0x01 => {//call or jmp
-                self.input_label(); //BOTH refresh_screen code for help              
+                self.input_code_label(); //refresh_screen code for help              
             }
-            2 => { self.input_label(); }//mem
-            3 => { self.input_bss(); }
+            2 => { 
+                self.input_mem_label(); 
+            }//mem
+            3 => { 
+                self.input_bss(); 
+            }
             _ => {
                 self.input_value();
             },
@@ -597,7 +604,6 @@ impl Windows {
         let lwin_menu = Windows::create_win(" ",self.wd(3,'h'), self.wd(3,'w'), self.wd(3,'y'), self.wd(3,'x'));
 
         let s;
-        let v;
         let d = " ".to_string();
         mvwprintw(lwin_menu,0,1," input a number ");
         mvwprintw(lwin_menu,2,1," input:");
@@ -613,13 +619,7 @@ impl Windows {
                 //KEY_LEFT => {}
                 //KEY_RIGHT => {}
                 0xa => {//enter
-                    if val.len() > 2 && val.as_bytes()[0] == 0x30 && (val.as_bytes()[1] == 0x58 || val.as_bytes()[1] == 0x78) {
-                        let without_prefix = val.trim_left_matches("0x");
-                        v = u32::from_str_radix(without_prefix, 16).unwrap();
-                    }
-                    else {
-                        v = u32::from_str_radix(val.as_str(), 10).unwrap();
-                    }
+                    let v = Windows::string_to_val(val);
                     s = format!("CONST_{}",v);
                     self.edit_item[self.cur_arg as usize] = cpu::CPU::add_new_item(&mut self.cpu_reader.borrow_mut().data, cpu::CPU::new_Item(s, d, v) ) as i32;
                     self.modify();
@@ -643,127 +643,191 @@ impl Windows {
         Windows::destroy_win(lwin_menu);
     }
 
-    fn input_bss(&mut self) {//bss or mem
-        //TODO add new label in code->window (suggest free spot(size 1/4, name:derived), ask name, input size, able to change address)
-        //TODO add new label in mem/bss->window (suggest free spot(size 1/4, name:derived), ask name, input size, able to change address)
-        //window with suggested address
-        //dialog for BSS: select an address (provide suggestions based on labels)
-        //call cpu for list of labels in range bss
-        //OR input value (and add new label)
-        //BOTH refresh_screen memview for help
+    fn input_bss(&mut self) {
+        //dialog for BSS: select an address (provide suggestions based on labels in range bss)
+        // refresh_screen memview for help
+        let mut val : Vec<String> = Vec::new();//String::from("");
+        let adr = self.cpu_reader.borrow_mut().get_free_bss();
+        val.push(format!("0x{:08X}",adr).to_string());
+        val.push(format!("BSS_{}",adr).to_string());
+        val.push("1".to_string());
+
         let mut screen_height = 0;
         let mut screen_width = 0;
         getmaxyx(stdscr(), &mut screen_height, &mut screen_width);
         let lwin_menu = Windows::create_win(" ",self.wd(3,'h'), self.wd(3,'w'), self.wd(3,'y'), self.wd(3,'x'));
         mvwprintw(lwin_menu,0,1," add a bss item");
-        mvwprintw(lwin_menu,2,1," address:");
-        mvwprintw(lwin_menu,3,1," name:");
-        mvwprintw(lwin_menu,4,1," size:");
-        mvwprintw(lwin_menu,5,1," data:");
-        wrefresh(lwin_menu);
-        curs_set(CURSOR_VISIBILITY::CURSOR_VISIBLE);
-        wrefresh(lwin_menu);
-        let mut s;
-        let d = "".to_string();
-        let v;
-        let mut val : String = String::from("");
-        let mut ch = 0;//getch();
-        while ch != 27 as i32 { // ESC pressed, so quit
-            //hex or normal
-            ch = getch();
-            match ch {
-                //KEY_LEFT => {}
-                //KEY_RIGHT => {}
-                0xa => {//enter
-                    if val.len() > 2 && val.as_bytes()[0] == 0x30 && (val.as_bytes()[1] == 0x58 || val.as_bytes()[1] == 0x78) {
-                        let without_prefix = val.trim_left_matches("0x");
-                        v = u32::from_str_radix(without_prefix, 16).unwrap();
-                    }
-                    else {
-                        v = u32::from_str_radix(val.as_str(), 10).unwrap();
-                    }
-                    s = format!("CONST_{}",v);
-                    self.edit_item[self.cur_arg as usize] = cpu::CPU::add_new_item(&mut self.cpu_reader.borrow_mut().data, cpu::CPU::new_Item(s, d, v) ) as i32;
-                    self.modify();
-                    break;
-                } 
-                0x107 => {//backspace
-                    val.pop();
-                }
-                _ => {
-                    let key = (ch as u8) as char;
-                    if ( key.is_ascii_hexdigit() || ch==0x78 || ch==0x58 ) && val.len() < 10 {
-                        val.push(key);
-                    }
-                }
-            }
-            mvwprintw(lwin_menu,2,8,"          ");
-            mvwprintw(lwin_menu,2,8,val.as_str());
-            wrefresh(lwin_menu);
-        }
-        curs_set(CURSOR_VISIBILITY::CURSOR_INVISIBLE);
-        Windows::destroy_win(lwin_menu);
+        mvwprintw(lwin_menu,3,1,format!(" name:\t\t{}",val[1]).as_str());
+        mvwprintw(lwin_menu,4,1,format!(" size:\t\t{}",val[2]).as_str());
+        mvwprintw(lwin_menu,2,1,format!(" address:\t{}",val[0]).as_str());
+
+        let mut ll = self.cpu_reader.borrow_mut().get_mem_label_list();
+        self.handle_input_menu(lwin_menu,&mut val, &mut ll);
     }
 
-    fn input_label(&mut self) {//code or mem
-        //dialog for new heap: select an address (provide suggestions, based on labels)
-        //call cpu for list of labels in range mem
-        //OR input value (and add new label)
-        //BOTH refresh_screen memview for help
-        //TODO add new label in code->window (suggest free spot(size 1/4, name:derived), ask name, input size, able to change address)
-        //TODO add new label in mem/bss->window (suggest free spot(size 1/4, name:derived), ask name, input size, able to change address)
-        //window with suggested address
+    fn input_code_label(&mut self) {
+        //dialog for BSS: select an address (provide suggestions based on labels in range bss)
+        // refresh_screen memview for help
+        let mut val : Vec<String> = Vec::new();//String::from("");
+        let adr = self.edit_pc;
+        val.push(format!("0x{:08X}",adr).to_string());
+        val.push(format!("LBL_{}",adr).to_string());
+        val.push("1".to_string());
+
         let mut screen_height = 0;
         let mut screen_width = 0;
         getmaxyx(stdscr(), &mut screen_height, &mut screen_width);
         let lwin_menu = Windows::create_win(" ",self.wd(3,'h'), self.wd(3,'w'), self.wd(3,'y'), self.wd(3,'x'));
-        mvwprintw(lwin_menu,0,1," add a label <CODE/MEM> ");
-        mvwprintw(lwin_menu,2,1," address:");
-        mvwprintw(lwin_menu,3,1," name:");
-        mvwprintw(lwin_menu,4,1," size:");
-        wrefresh(lwin_menu);
-        curs_set(CURSOR_VISIBILITY::CURSOR_VISIBLE);
-        wrefresh(lwin_menu);
-        let mut s;
+        mvwprintw(lwin_menu,0,1," add a code label");
+        mvwprintw(lwin_menu,3,1,format!(" name:\t\t{}",val[1]).as_str());
+        mvwprintw(lwin_menu,4,1,format!(" size:\t\t{}",val[2]).as_str());
+        mvwprintw(lwin_menu,2,1,format!(" address:\t{}",val[0]).as_str());
+
+        let mut ll = self.cpu_reader.borrow_mut().get_code_label_list();
+        self.handle_input_menu(lwin_menu,&mut val, &mut ll);
+    }
+
+    fn input_mem_label(&mut self) {
+        //dialog for new heap: select an address (provide suggestions, based on labels in range mem)
+        // refresh_screen memview for help
+
+        let mut val : Vec<String> = Vec::new();//String::from("");
+        let adr = self.cpu_reader.borrow_mut().get_free_mem();
+        val.push(format!("0x{:08X}",adr).to_string());
+        val.push(format!("VAR_{}",adr).to_string());
+        val.push("1".to_string());
+
+        let mut screen_height = 0;
+        let mut screen_width = 0;
+        getmaxyx(stdscr(), &mut screen_height, &mut screen_width);
+
+        let lwin_menu = Windows::create_win(" ",self.wd(3,'h'), self.wd(3,'w'), self.wd(3,'y'), self.wd(3,'x'));
+        mvwprintw(lwin_menu,0,1," add a label <MEM>");
+        mvwprintw(lwin_menu,3,1,format!(" name:\t\t{}",val[1]).as_str());
+        mvwprintw(lwin_menu,4,1,format!(" size:\t\t{}",val[2]).as_str());
+        mvwprintw(lwin_menu,2,1,format!(" address:\t{}",val[0]).as_str());
+
+        let mut ll = self.cpu_reader.borrow_mut().get_mem_label_list();
+        self.handle_input_menu(lwin_menu,&mut val, &mut ll);
+    }
+
+    fn handle_input_menu(&mut self, lwin_menu : WINDOW, val :&mut Vec<String>, list : &mut Vec<ITEM>) {
+        let mut curval = 0;
         let d = "".to_string();
-        let v;
-        let mut val : String = String::from("");
-        let mut ch = 0;//getch();
+
+        let subwin = derwin(lwin_menu,self.wd(3,'h')-(3 + val.len() as i32),self.wd(3,'w')-2, 2 + val.len() as i32, 1);
+        let menu = Windows::create_menu(list,subwin,100);
+        unpost_menu(menu);
+
+        curs_set(CURSOR_VISIBILITY::CURSOR_VISIBLE);
+        mvwprintw(lwin_menu,2+curval as i32,16,"            ");
+        mvwprintw(lwin_menu,2+curval as i32,16,val[curval].as_str());
+        wrefresh(lwin_menu);
+
+        let mut existing = false;
+        let mut ch = 0;
         while ch != 27 as i32 { // ESC pressed, so quit
             //hex or normal
             ch = getch();
             match ch {
-                //KEY_LEFT => {}
-                //KEY_RIGHT => {}
-                0xa => {//enter
-                    if val.len() > 2 && val.as_bytes()[0] == 0x30 && (val.as_bytes()[1] == 0x58 || val.as_bytes()[1] == 0x78) {
-                        let without_prefix = val.trim_left_matches("0x");
-                        v = u32::from_str_radix(without_prefix, 16).unwrap();
+                KEY_UP => { 
+                    if existing {
+                        menu_driver(menu, REQ_UP_ITEM);
                     }
                     else {
-                        v = u32::from_str_radix(val.as_str(), 10).unwrap();
+                        if curval > 0 {
+                            curval = curval - 1;
+                        }  
                     }
-                    s = format!("CONST_{}",v);
-                    self.edit_item[self.cur_arg as usize] = cpu::CPU::add_new_item(&mut self.cpu_reader.borrow_mut().data, cpu::CPU::new_Item(s, d, v) ) as i32;
+                }
+                KEY_DOWN => { 
+                    if existing {
+                        menu_driver(menu, REQ_DOWN_ITEM);
+                    }
+                    else {
+                        curval = (curval + 1) % 3; 
+                    }
+                }
+                0x09 => { //tab
+                    //curval = (curval + 1) % 3; 
+                    if existing {
+                        existing = false;
+                        unpost_menu(menu);
+                        curs_set(CURSOR_VISIBILITY::CURSOR_VISIBLE);
+                    }
+                    else {
+                        existing = true;
+                        menu_opts_off(menu, O_SHOWDESC);
+                        post_menu(menu);
+                        curs_set(CURSOR_VISIBILITY::CURSOR_INVISIBLE);
+                    }
+                }
+                0xa => {//enter
+                    if existing {
+                        //TODO add selected item
+                        let s = item_description(current_item(menu)).clone();
+                        let val : u32 = s.parse().unwrap();
+                        let mut ss = "".to_string();
+                        match self.cpu_reader.borrow_mut().get_label(val) {
+                            Some(ll) => { ss = ll.tag.clone(); },
+                            None => {},
+                        }
+                        self.edit_item[self.cur_arg as usize] = cpu::CPU::add_new_item(&mut self.cpu_reader.borrow_mut().data, cpu::CPU::new_Item(ss, d, val)) as i32;
+                    }
+                    else {
+                        let v = Windows::string_to_val(val[0].clone());
+                        self.cpu_reader.borrow_mut().add_new_label(val[1].clone(),v,Windows::string_to_val(val[2].clone()));
+                        self.edit_item[self.cur_arg as usize] = cpu::CPU::add_new_item(&mut self.cpu_reader.borrow_mut().data, cpu::CPU::new_Item(val[1].clone(), d, v)) as i32;
+                    }
                     self.modify();
                     break;
                 } 
-                0x107 => {//backspace
-                    val.pop();
+                0x107 if existing == false => {//backspace
+                    if existing {
+
+                    }
+                    else {
+                        val[curval].pop();
+                    }
                 }
                 _ => {
-                    let key = (ch as u8) as char;
-                    if ( key.is_ascii_hexdigit() || ch==0x78 || ch==0x58 ) && val.len() < 10 {
-                        val.push(key);
+                    if existing {
+                        menu_driver(menu, ch);
+                    }
+                    else {
+                        let key = (ch as u8) as char;
+                        if curval == 0 || curval == 2 {
+                            if ( key.is_ascii_hexdigit() || ch==0x78 || ch==0x58 ) && val[curval].len() < 12 {
+                                val[curval].push(key);
+                            }
+                        }
+                        else {
+                            if val[curval].len() < 12 {
+                                val[curval].push(key);
+                            }
+                        }
                     }
                 }
             }
-            mvwprintw(lwin_menu,2,8,"          ");
-            mvwprintw(lwin_menu,2,8,val.as_str());
+            wrefresh(subwin);
+            mvwprintw(lwin_menu,2+curval as i32,16,"            ");
+            mvwprintw(lwin_menu,2+curval as i32,16,val[curval].as_str());
             wrefresh(lwin_menu);
         }
         curs_set(CURSOR_VISIBILITY::CURSOR_INVISIBLE);
+        Windows::destroy_menu(menu,list);
+        Windows::destroy_win(subwin);
         Windows::destroy_win(lwin_menu);
+    }
+
+    fn string_to_val(val : String) -> u32 {
+        if val.len() > 2 && val.as_bytes()[0] == 0x30 && (val.as_bytes()[1] == 0x58 || val.as_bytes()[1] == 0x78) {
+            let without_prefix = val.trim_left_matches("0x");
+            u32::from_str_radix(without_prefix, 16).unwrap()
+        }
+        else {
+            u32::from_str_radix(val.as_str(), 10).unwrap()
+        }
     }
 
     //find labels in code or mem
@@ -771,51 +835,18 @@ impl Windows {
         //TODO add search for label in code -> window(show list of labels, set pc to selected one)
         //TODO add search for label in hex-editor -> window(list of labels, set mem_highlight and mem-address to selected one)
         //window with list of labels (code:/bss:/mem:), possibly filter?
-        //
-                //menu for a new value based on argument-index (self.cur_arg) 
-        //new window, asking to input a value
         let mut screen_height = 0;
         let mut screen_width = 0;
         getmaxyx(stdscr(), &mut screen_height, &mut screen_width);
         let lwin_menu = Windows::create_win(" ",self.wd(3,'h'), self.wd(3,'w'), self.wd(3,'y'), self.wd(3,'x'));
         mvwprintw(lwin_menu,0,1," search label <CODE/MEM>");
         let mut items = Vec::new();//self.cpu_reader.borrow_mut().reg_opts();
-        let mut select :i32 = 0;
+        let select :i32 = 0;
         let menu = Windows::create_menu(&mut items,lwin_menu,select as u32);
         wrefresh(lwin_menu);
-        let s;
-        let d = "".to_string();
-        let v;
-        let mut ch = getch();
-        while ch != 27 as i32 { // ESC pressed, so quit
-            match ch {
-                KEY_UP => {
-                    menu_driver(menu, REQ_UP_ITEM);
-                    wrefresh(lwin_menu);
-                }
-                KEY_DOWN => {
-                    menu_driver(menu, REQ_DOWN_ITEM);
-                    wrefresh(lwin_menu);
-                }
-                0xa => {
-                    select = item_index(current_item(menu));
-                    s = format!("REG_{}",select);
-                    v = ((select * 4)+0xF000) as u32;
-                    //write direct (cur_arg = 0) or indirect (cur_arg = 1)
-                    if self.cur_arg == 0 { self.edit_mode[0] = 0; }
-                    else { self.edit_mode[self.cur_arg as usize] = 1; }
 
-                    self.edit_item[self.cur_arg as usize] = cpu::CPU::add_new_item(&mut self.cpu_reader.borrow_mut().data, cpu::CPU::new_Item(s, d, v) ) as i32;
-                    self.modify();
-                    break;
-                }
-                _ => {
-                    menu_driver(menu, ch);
-                    wrefresh(lwin_menu);
-                }
-            }
-            ch = getch();
-        }
+        //TODO
+
         Windows::destroy_menu(menu,&mut items);
         Windows::destroy_win(lwin_menu);
     }
