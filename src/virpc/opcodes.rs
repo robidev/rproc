@@ -1,16 +1,3 @@
-// opcode enumeration suffix: // addressing mode:
-// imm = #$00                 // immediate 
-// zp = $00                   // zero page
-// zpx = $00,X                // zero page with X
-// zpy = $00,Y                // zero page with Y
-// izx = ($00,X)              // indexed indirect (X)
-// izy = ($00),Y              // indirect indexed (Y)
-// abs = $0000                // absolute
-// abx = $0000,X              // absolute indexed with X
-// aby = $0000,Y              // absolute indexed with Y
-// ind = ($0000)              // indirect
-// rel = $0000                // relative to PC/IP
-
 use crate::virpc::cpu;
 use std::fmt;
 
@@ -124,7 +111,7 @@ pub fn run(cpu: &mut cpu::CPU) -> bool {
             let adr = cpu.instruction.arg[2];
             cpu.write_int_le(adr,pos);
         },
-        Op::LDR => {//LDR/POP 3 POP A from [B] (and inc c) TODO: add pc relative addressing, and sp relative addressing
+        Op::LDR => {//LDR/POP 3 POP A from [B] (and inc c)
             match cpu.instruction.addressing_type { 
                 ArgumentSize::Byte => {
                     //read val from [arg1], store in arg0 (and inc addr2)

@@ -5,9 +5,6 @@ static COLOR_PAIR_DEFAULT: i16 = 1;
 static COLOR_PAIR_KEYWORD: i16 = 2;
 static MEMORY_SIZE: u32 = 0x080000;
 
-//TODO add search for label in code -> window(show list of labels, set pc to selected one)
-//TODO add search for label in hex-editor -> window(list of labels, set mem_highlight and mem-address to selected one)
-
 //TODO sound chip
 //TODO keyboard
 //TODO video-improve
@@ -18,6 +15,7 @@ static MEMORY_SIZE: u32 = 0x080000;
 //TODO add custom handling of ldr/str arguments, and argument printing
 //TODO add whole memview(separate window)
 //TODO add colorised modified values in hexview
+//TODO add help: arrows to navigate, tab to switch, e to edit in hex view, f to find(in code/hex view)
 
 static EBCDIC: [char;256] = [
     /* 0   1   2   3   4   5   6   7   8   9   A   B   C   D    E   F */
@@ -135,6 +133,9 @@ impl Windows {
         win.items3 = win.cpu_reader.borrow_mut().get_addressing_mode_list();
 
         win.cpu_reader.borrow_mut().add_new_label("reset".to_string(),0x0, 1);
+        win.cpu_reader.borrow_mut().add_new_label("2nd".to_string(),0x9, 3);
+        win.cpu_reader.borrow_mut().add_new_label("3rd".to_string(),0x1b, 3);
+        win.cpu_reader.borrow_mut().add_new_label("func1".to_string(),0x21, 3);
         win.cpu_reader.borrow_mut().add_new_label("bss_one".to_string(),0xe000, 1);
         win.cpu_reader.borrow_mut().add_new_label("bss2".to_string(),0xe004, 1);
 
@@ -396,7 +397,7 @@ impl Windows {
                     self.menu3_choice = self.edit_mode[self.cur_arg as usize] as u32;
                 }
             }
-            if i >= end - ((self.screen_height/2-3) as u32) {
+            if i >= end - ((self.wd(2,'h')-2) as u32) {
                 wprintw(self.win2_sub, self.cpu_reader.borrow_mut().instruction_to_text().as_str());
                 wattrset(self.win2_sub, COLOR_PAIR(1));
             }
@@ -875,10 +876,6 @@ impl Windows {
 
     //find labels in code or mem
     fn search_label(&mut self) {
-        //TODO add search for label in code -> window(show list of labels, set pc to selected one)
-        //TODO add search for label in hex-editor -> window(list of labels, set mem_highlight and mem-address to selected one)
-        //window with list of labels (code:/bss:/mem:), possibly filter?
-        //
         let mut screen_height = 0;
         let mut screen_width = 0;
         getmaxyx(stdscr(), &mut screen_height, &mut screen_width);
@@ -912,6 +909,28 @@ impl Windows {
                     self.refresh_memview();
                     if self.focus == 0 {
                         self.reset_edit();
+                        let mut lpc = lbl.address;
+                        let tmp = self.edit_line;
+                        self.edit_line = 0;
+                        let mut tpc;
+
+                        wattrset(self.win2_sub, COLOR_PAIR(1));
+                        wresize(self.win2_sub,self.wd(2,'h')-2, self.wd(2,'w')-2);
+                        let end = (self.wd(2,'h')-2) as u32;
+                        wmove(self.win2_sub,0,0);
+                        for i in 0..end {
+                            tpc = self.cpu_reader.borrow_mut().disassemble(lpc);
+                            if i == self.edit_line {
+                                wattrset(self.win2_sub, COLOR_PAIR(2));
+                                self.edit_pc = lpc;
+                            }
+                            wprintw(self.win2_sub, self.cpu_reader.borrow_mut().instruction_to_text().as_str());
+                            wattrset(self.win2_sub, COLOR_PAIR(1));
+                            lpc = tpc;
+                        }
+                        self.cpu_reader.borrow_mut().set_pc(self.edit_pc);//set pc to current instruction
+                        wrefresh(self.win2_sub);
+                        self.edit_line = tmp;
                     }
                 }
                 KEY_DOWN => { 
@@ -926,7 +945,32 @@ impl Windows {
                     self.refresh_memview();
                     if self.focus == 0 {
                         self.reset_edit();
+                        let mut lpc = lbl.address;
+                        let tmp = self.edit_line;
+                        self.edit_line = 0;
+                        let mut tpc;
+
+                        wattrset(self.win2_sub, COLOR_PAIR(1));
+                        wresize(self.win2_sub,self.wd(2,'h')-2, self.wd(2,'w')-2);
+                        let end = (self.wd(2,'h')-2) as u32;
+                        wmove(self.win2_sub,0,0);
+                        for i in 0..end {
+                            tpc = self.cpu_reader.borrow_mut().disassemble(lpc);
+                            if i == self.edit_line {
+                                wattrset(self.win2_sub, COLOR_PAIR(2));
+                                self.edit_pc = lpc;
+                            }
+                            wprintw(self.win2_sub, self.cpu_reader.borrow_mut().instruction_to_text().as_str());
+                            wattrset(self.win2_sub, COLOR_PAIR(1));
+                            lpc = tpc;
+                        }
+                        self.cpu_reader.borrow_mut().set_pc(self.edit_pc);//set pc to current instruction
+                        wrefresh(self.win2_sub);
+                        self.edit_line = tmp;
                     }
+                }
+                0xa => {
+                    //TODO if pressed enter, scroll to currently selected result
                 }
                 _ => {
                     menu_driver(menu, ch);
