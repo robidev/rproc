@@ -1,5 +1,5 @@
-#![allow(unused_imports)]
-#![allow(dead_code)]
+//#![allow(unused_imports)]
+//#![allow(dead_code)]
 extern crate minifb;
 extern crate byteorder;
 extern crate num;
@@ -16,7 +16,6 @@ mod debugger;
 mod editor;
 
 use virpc::cpu;
-use virpc::memory;
 
 use minifb::*;
 use std::env;
@@ -47,7 +46,7 @@ fn main() {
 
     let asmcpu = cpu::CPU::new_shared();
     virpc.reset();
-
+    virpc.run();
     asmcpu.borrow_mut().set_references(virpc.memory);
     let mut _windows : Windows = Windows::new(asmcpu);
 

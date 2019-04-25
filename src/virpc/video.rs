@@ -12,8 +12,8 @@ pub struct Video {
     pub window_buffer: Vec<u32>,
     mem_ref: Option<memory::MemShared>,
     cpu_ref: Option<cpu::CPUShared>,
-    screen_chunk_offset: usize, // current offset from screen start
-    line_start_offset: usize,   // offset to the next line start on screen
+    //screen_chunk_offset: usize, // current offset from screen start
+    //line_start_offset: usize,   // offset to the next line start on screen
 }
 
 impl Video {
@@ -22,8 +22,8 @@ impl Video {
             window_buffer: vec![0; virpc::SCREEN_WIDTH * virpc::SCREEN_HEIGHT],
             mem_ref: None,
             cpu_ref: None,
-            screen_chunk_offset: 0,
-            line_start_offset:   0,
+            //screen_chunk_offset: 0,
+            //line_start_offset:   0,
         }))
     }
     
@@ -41,6 +41,7 @@ impl Video {
         self.cpu_ref = Some(cpuref);
     }
     
+    /*
     fn draw_background(&mut self) {
         let dst_color: u8;
         
@@ -48,7 +49,7 @@ impl Video {
         
         let color_rgba = utils::fetch_c64_color_rgba(dst_color);
         utils::memset8(&mut self.window_buffer, self.screen_chunk_offset, color_rgba);
-    }
+    }*/
     
 
     // *** helper functions for draw_graphics ***

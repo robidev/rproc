@@ -10,15 +10,7 @@ use crate::utils;
 
 const DEBUG_W: usize = 640;
 const DEBUG_H: usize = 432;
-const RASTER_DEBUG_W: usize = 3*63;
-const RASTER_DEBUG_H: usize = 312;
 
-// color constants for VIC raster window
-const BORDER_COLOR: u32    = 0x00404040;
-const BG_COLOR: u32        = 0x00000000;
-const VIC_WRITE_COLOR: u32 = 0x00FF0000;
-const RASTER_COLOR: u32    = 0x000000FF;
-const BADLINE_COLOR: u32   = 0x0000FF00;
 
 
 pub struct Debugger {
@@ -26,7 +18,6 @@ pub struct Debugger {
     font: font::SysFont,
     window_buffer: Vec<u32>, // main debugger window data buffer
     mempage_offset: u32,     // RAM preview memory page offset
-    draw_mode: u8,
 }
 
 impl Debugger {
@@ -36,7 +27,6 @@ impl Debugger {
             font: font::SysFont::new(),
             window_buffer: vec![0; DEBUG_W * DEBUG_H],
             mempage_offset: 0,
-            draw_mode: 0,
         };
 
         dbg.debug_window.set_position(480, 20);
@@ -149,31 +139,5 @@ impl Debugger {
 
         self.font.draw_char(&mut self.window_buffer, DEBUG_W, 8*40, 0, 114, 0x0B);
         self.font.draw_char(&mut self.window_buffer, DEBUG_W, 8*40, 8*27, 113, 0x0B);
-    }
-
-
-    fn clear_char(&mut self, x_pos: usize, y_pos: usize) {
-        self.font.draw_text(&mut self.window_buffer, DEBUG_W, x_pos, y_pos, " ", 0x00);
-    }
-
-
-    fn mix_colors(&self, new: u32, old: u32, alpha: f32) -> u32 {
-        let rn = ((new >> 16) & 0xFF) as f32;
-        let gn = ((new >> 8) & 0xFF) as f32;
-        let bn = (new & 0xFF) as f32;
-
-        let ro = ((old >> 16) & 0xFF) as f32;
-        let go = ((old >> 8) & 0xFF) as f32;
-        let bo = (old & 0xFF) as f32;
-
-        let rd = alpha * rn + (1.0 - alpha) * ro;
-        let gd = alpha * gn + (1.0 - alpha) * go;
-        let bd = alpha * bn + (1.0 - alpha) * bo;
-
-        let mut dst_color = (rd as u32) << 16;
-        dst_color |= (gd as u32) << 8;
-        dst_color |= bd as u32;
-
-        dst_color
     }
 }

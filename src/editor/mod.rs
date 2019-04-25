@@ -1,16 +1,9 @@
 use ncurses::*;
 use crate::virpc::cpu;
-use crate::utils;
 
-static COLOR_BACKGROUND: i16 = 16;
-static COLOR_FOREGROUND: i16 = 17;
-static COLOR_KEYWORD: i16 = 18;
 static COLOR_PAIR_DEFAULT: i16 = 1;
 static COLOR_PAIR_KEYWORD: i16 = 2;
 static MEMORY_SIZE: u32 = 0x080000;
-
-//TODO add new label in code/mem->window (suggest free spot(size 1/4, name:derived), ask name, input size, able to change address)
-//TODO add new label in bss->window (suggest free spot(size 1/4, name:derived), ask name, input size, able to change address, and modify hex value?)
 
 //TODO add search for label in code -> window(show list of labels, set pc to selected one)
 //TODO add search for label in hex-editor -> window(list of labels, set mem_highlight and mem-address to selected one)
@@ -75,6 +68,7 @@ pub struct Windows {
     edit_cmd : i32,
     edit_item : Vec<i32>,
     edit_mode : Vec<i32>,
+    hex_view_offset : u32,
     mem_address : u32,
     mem_highlight : u32,
     mem_highlight_size : u32,
@@ -112,6 +106,7 @@ impl Windows {
             edit_cmd : -1,
             edit_item : vec![-1; 3],
             edit_mode : vec![-1; 3],
+            hex_view_offset : 0,
             mem_address : 0,
             mem_highlight : 0,
             mem_highlight_size : 0,
@@ -347,11 +342,13 @@ impl Windows {
         self.items3 = self.cpu_reader.borrow_mut().get_addressing_mode_list();
         self.menu3 = Windows::create_menu(&mut self.items3, self.win4, self.menu3_choice);
 
-        self.mem_address = self.cpu_reader.borrow_mut().get_data_value(self.menu2_choice);
-        match self.cpu_reader.borrow_mut().get_label(self.mem_address) {
-            Some(lbl) => { self.mem_highlight = self.mem_address; self.mem_highlight_size = lbl.size; }
-            None => { self.mem_highlight = self.mem_address; self.mem_highlight_size = 1; }
-        }
+        let adr = self.cpu_reader.borrow_mut().get_data_value(self.menu2_choice);
+
+        let size = match self.cpu_reader.borrow_mut().get_label(adr) {
+            Some(lbl) => { lbl.size }
+            None => { 1 }//assume size of 1
+        };
+        self.set_memview_focus(adr,size);
         self.refresh_memview();
     }
 
@@ -413,15 +410,14 @@ impl Windows {
     }
 
     fn refresh_memview(&mut self) {
+        let w = (self.wd(5,'w')/4)-4;
         for i in 0..(self.wd(5,'h')-2) {
-            let w = (self.wd(5,'w')/4)-4;
-            let mem_address = self.mem_address - (self.mem_address % w as u32);
-            if ( mem_address + (i*w) as u32 )  >= MEMORY_SIZE { break; }
+            if ( self.hex_view_offset + (i*w) as u32 )  >= MEMORY_SIZE { break; }
 
-            let s = format!("${:08X} |",mem_address + (i*w) as u32);
+            let s = format!("${:08X} |",self.hex_view_offset + (i*w) as u32);
             mvwprintw(self.win5,i+1,1,s.as_str());
             for j in 0..w {
-                let adr = mem_address + ( (i*w) + j ) as u32;
+                let adr = self.hex_view_offset + ( (i*w) + j ) as u32;
                          
                 if adr >= self.mem_highlight && adr < self.mem_highlight + self.mem_highlight_size {
                     if adr > self.mem_highlight {
@@ -446,7 +442,7 @@ impl Windows {
             }
             wprintw(self.win5," | ");
             for j in 0..w {
-                let adr = mem_address + ( (i*w) + j ) as u32;
+                let adr = self.hex_view_offset + ( (i*w) + j ) as u32;
                 let val : u8 = self.cpu_reader.borrow_mut().read_byte(adr);
                 if adr < MEMORY_SIZE {
                     wprintw(self.win5,format!("{}",EBCDIC[val as usize]).as_str());
@@ -457,6 +453,13 @@ impl Windows {
             }
         }
         wrefresh(self.win5);
+    }
+
+    fn set_memview_focus(&mut self, adr : u32, size : u32) {
+        self.mem_address = adr;
+        self.hex_view_offset = self.mem_address - (self.mem_address % ((self.wd(5,'w')/4)-4) as u32);//scroll so mem_address is in view
+        self.mem_highlight = self.mem_address; 
+        self.mem_highlight_size = size;
     }
 
     ////////////////////////////////////////////
@@ -531,7 +534,7 @@ impl Windows {
                     s = format!("CONST_{}",select);
                     v = select as u32;
                     self.edit_mode[1] = 0;
-                    self.edit_item[self.cur_arg as usize] = cpu::CPU::add_new_item(&mut self.cpu_reader.borrow_mut().data, cpu::CPU::new_Item(s, d, v) ) as i32;
+                    self.edit_item[self.cur_arg as usize] = cpu::CPU::add_new_item(&mut self.cpu_reader.borrow_mut().data, cpu::CPU::new_item(s, d, v) ) as i32;
                     self.modify();
                     break;
                 }
@@ -580,7 +583,7 @@ impl Windows {
                     if self.cur_arg == 0 { self.edit_mode[0] = 0; }
                     else { self.edit_mode[self.cur_arg as usize] = 1; }
 
-                    self.edit_item[self.cur_arg as usize] = cpu::CPU::add_new_item(&mut self.cpu_reader.borrow_mut().data, cpu::CPU::new_Item(s, d, v) ) as i32;
+                    self.edit_item[self.cur_arg as usize] = cpu::CPU::add_new_item(&mut self.cpu_reader.borrow_mut().data, cpu::CPU::new_item(s, d, v) ) as i32;
                     self.modify();
                     break;
                 }
@@ -621,7 +624,7 @@ impl Windows {
                 0xa => {//enter
                     let v = Windows::string_to_val(val);
                     s = format!("CONST_{}",v);
-                    self.edit_item[self.cur_arg as usize] = cpu::CPU::add_new_item(&mut self.cpu_reader.borrow_mut().data, cpu::CPU::new_Item(s, d, v) ) as i32;
+                    self.edit_item[self.cur_arg as usize] = cpu::CPU::add_new_item(&mut self.cpu_reader.borrow_mut().data, cpu::CPU::new_item(s, d, v) ) as i32;
                     self.modify();
                     break;
                 } 
@@ -718,7 +721,9 @@ impl Windows {
         let subwin = derwin(lwin_menu,self.wd(3,'h')-(3 + val.len() as i32),self.wd(3,'w')-2, 2 + val.len() as i32, 1);
         let menu = Windows::create_menu(list,subwin,100);
         unpost_menu(menu);
-
+        menu_opts_off(menu, O_SHOWDESC);
+        set_menu_fore(menu, COLOR_PAIR(COLOR_PAIR_DEFAULT));
+        post_menu(menu);
         curs_set(CURSOR_VISIBILITY::CURSOR_VISIBLE);
         mvwprintw(lwin_menu,2+curval as i32,16,"            ");
         mvwprintw(lwin_menu,2+curval as i32,16,val[curval].as_str());
@@ -733,6 +738,20 @@ impl Windows {
                 KEY_UP => { 
                     if existing {
                         menu_driver(menu, REQ_UP_ITEM);
+                        let s = item_description(current_item(menu)).clone();
+                        let lval : u32 = s.parse().unwrap();
+                        let lbl =  match self.cpu_reader.borrow_mut().get_label(lval) {
+                            Some(ll) => { ll },
+                            None => {cpu::Label { tag : "UNKNOOWN".to_string(), address : 0x0, size : 0 }},
+                        };
+                        val[0] = format!("{:08X}",lbl.address);
+                        val[1] = lbl.tag.clone();
+                        val[2] = lbl.size.to_string();
+                        mvwprintw(lwin_menu,2,16,format!("{:14}",val[0]).as_str());
+                        mvwprintw(lwin_menu,3,16,format!("{:14}",val[1]).as_str());
+                        mvwprintw(lwin_menu,4,16,format!("{:14}",val[2]).as_str());
+                        self.set_memview_focus(lbl.address,lbl.size);
+                        self.refresh_memview();
                     }
                     else {
                         if curval > 0 {
@@ -743,6 +762,20 @@ impl Windows {
                 KEY_DOWN => { 
                     if existing {
                         menu_driver(menu, REQ_DOWN_ITEM);
+                        let s = item_description(current_item(menu)).clone();
+                        let lval : u32 = s.parse().unwrap();
+                        let lbl =  match self.cpu_reader.borrow_mut().get_label(lval) {
+                            Some(ll) => { ll },
+                            None => {cpu::Label { tag : "UNKNOOWN".to_string(), address : 0x0, size : 0 }},
+                        };
+                        val[0] = format!("{:08X}",lbl.address);;
+                        val[1] = lbl.tag.clone();
+                        val[2] = lbl.size.to_string();
+                        mvwprintw(lwin_menu,2,16,format!("{:14}",val[0]).as_str());
+                        mvwprintw(lwin_menu,3,16,format!("{:14}",val[1]).as_str());
+                        mvwprintw(lwin_menu,4,16,format!("{:14}",val[2]).as_str());
+                        self.set_memview_focus(lbl.address,lbl.size);
+                        self.refresh_memview();
                     }
                     else {
                         curval = (curval + 1) % 3; 
@@ -752,32 +785,51 @@ impl Windows {
                     //curval = (curval + 1) % 3; 
                     if existing {
                         existing = false;
-                        unpost_menu(menu);
+                        //unpost_menu(menu);
                         curs_set(CURSOR_VISIBILITY::CURSOR_VISIBLE);
+                        unpost_menu(menu);
+                        menu_opts_off(menu, O_SHOWDESC);
+                        set_menu_fore(menu, COLOR_PAIR(COLOR_PAIR_DEFAULT));
+                        post_menu(menu);
                     }
                     else {
                         existing = true;
-                        menu_opts_off(menu, O_SHOWDESC);
-                        post_menu(menu);
                         curs_set(CURSOR_VISIBILITY::CURSOR_INVISIBLE);
+                        let s = item_description(current_item(menu)).clone();
+                        let lval : u32 = s.parse().unwrap();
+                        let lbl =  match self.cpu_reader.borrow_mut().get_label(lval) {
+                            Some(ll) => { ll },
+                            None => {cpu::Label { tag : "UNKNOOWN".to_string(), address : 0x0, size : 0 }},
+                        };
+                        val[0] = format!("{:08X}",lbl.address);;
+                        val[1] = lbl.tag.clone();
+                        val[2] = lbl.size.to_string();
+                        mvwprintw(lwin_menu,2,16,format!("{:14}",val[0]).as_str());
+                        mvwprintw(lwin_menu,3,16,format!("{:14}",val[1]).as_str());
+                        mvwprintw(lwin_menu,4,16,format!("{:14}",val[2]).as_str());
+                        self.set_memview_focus(lbl.address,lbl.size);
+                        self.refresh_memview();
+                        unpost_menu(menu);
+                        menu_opts_off(menu, O_SHOWDESC);
+                        set_menu_fore(menu, COLOR_PAIR(COLOR_PAIR_KEYWORD));
+                        post_menu(menu);
                     }
                 }
                 0xa => {//enter
                     if existing {
-                        //TODO add selected item
                         let s = item_description(current_item(menu)).clone();
-                        let val : u32 = s.parse().unwrap();
+                        let lval : u32 = s.parse().unwrap();
                         let mut ss = "".to_string();
-                        match self.cpu_reader.borrow_mut().get_label(val) {
+                        match self.cpu_reader.borrow_mut().get_label(lval) {
                             Some(ll) => { ss = ll.tag.clone(); },
                             None => {},
                         }
-                        self.edit_item[self.cur_arg as usize] = cpu::CPU::add_new_item(&mut self.cpu_reader.borrow_mut().data, cpu::CPU::new_Item(ss, d, val)) as i32;
+                        self.edit_item[self.cur_arg as usize] = cpu::CPU::add_new_item(&mut self.cpu_reader.borrow_mut().data, cpu::CPU::new_item(ss, d, lval)) as i32;
                     }
                     else {
                         let v = Windows::string_to_val(val[0].clone());
                         self.cpu_reader.borrow_mut().add_new_label(val[1].clone(),v,Windows::string_to_val(val[2].clone()));
-                        self.edit_item[self.cur_arg as usize] = cpu::CPU::add_new_item(&mut self.cpu_reader.borrow_mut().data, cpu::CPU::new_Item(val[1].clone(), d, v)) as i32;
+                        self.edit_item[self.cur_arg as usize] = cpu::CPU::add_new_item(&mut self.cpu_reader.borrow_mut().data, cpu::CPU::new_item(val[1].clone(), d, v)) as i32;
                     }
                     self.modify();
                     break;
@@ -810,8 +862,9 @@ impl Windows {
                 }
             }
             wrefresh(subwin);
-            mvwprintw(lwin_menu,2+curval as i32,16,"            ");
-            mvwprintw(lwin_menu,2+curval as i32,16,val[curval].as_str());
+            //mvwprintw(lwin_menu,2+curval as i32,16,"            ");
+            mvwprintw(lwin_menu,2+curval as i32,16,format!("{:14}",val[curval]).as_str());
+            wmove(lwin_menu,2+curval as i32,16+val[curval].len() as i32);
             wrefresh(lwin_menu);
         }
         curs_set(CURSOR_VISIBILITY::CURSOR_INVISIBLE);
@@ -823,10 +876,21 @@ impl Windows {
     fn string_to_val(val : String) -> u32 {
         if val.len() > 2 && val.as_bytes()[0] == 0x30 && (val.as_bytes()[1] == 0x58 || val.as_bytes()[1] == 0x78) {
             let without_prefix = val.trim_left_matches("0x");
-            u32::from_str_radix(without_prefix, 16).unwrap()
+            match u32::from_str_radix(without_prefix, 16) {
+                Ok(u) => u,
+                Err(_) => 0xDEADBEEF,
+            }
         }
         else {
-            u32::from_str_radix(val.as_str(), 10).unwrap()
+            match u32::from_str_radix(val.as_str(), 10) {
+                Ok(u) => u,
+                Err(_) => {
+                    match u32::from_str_radix(val.as_str(), 16) {
+                        Ok(u) => u,
+                        Err(_) => 0xDEADDEAD,
+                    }
+                }
+            }
         }
     }
 
@@ -892,6 +956,9 @@ impl Windows {
                 }
                 self.screen_height = 0;//trigger an refresh_screen
                 self.resize_check();//show the edited value
+            }
+            0x66 => {
+                self.search_label();
             }
             _ => {
                 match self.focus {
@@ -1001,21 +1068,21 @@ impl Windows {
         let w = ((self.wd(5,'w')/4)-4) as u32;
         match ch {
             KEY_UP => {
-                if self.mem_address >= w {
-                    self.mem_address -= w;
+                if self.hex_view_offset >= w {
+                    self.hex_view_offset -= w;
                 }
                 else {
-                    self.mem_address = 0;
+                    self.hex_view_offset = 0;
                 }
                 self.refresh_memview();
             }
             KEY_DOWN => {
-                if self.mem_address < MEMORY_SIZE-1 {
-                    self.mem_address += w;
+                if self.hex_view_offset < MEMORY_SIZE-1 {
+                    self.hex_view_offset += w;
                 }
                 self.refresh_memview();
             }            
-            0x65 => {
+            0x65 => {//e pressed, means edit hex values, until esc pressed
                 self.refresh_memview();
                 curs_set(CURSOR_VISIBILITY::CURSOR_VISIBLE);
                 
@@ -1038,11 +1105,16 @@ impl Windows {
                             else {
                                 if row > 1 { col = w; row -= 1; }  
                                 else {
-                                    col = w;
                                     let mut r = w-begin;
                                     if hex { r /= 3; }
-                                    if self.mem_address as i32 - r >= 0 { self.mem_address -= (r+1) as u32; }
-                                    else { self.mem_address = 0; }
+                                    if self.hex_view_offset as i32 - r > 0 { 
+                                        self.hex_view_offset -= (r+1) as u32; 
+                                        col = w;
+                                    }
+                                    else { 
+                                        self.hex_view_offset = 0; 
+                                        col = begin;
+                                    }
                                 }
                             }
                             if (col) % 3 == 0 && hex { col -= 1; }
@@ -1055,7 +1127,7 @@ impl Windows {
                                     col = begin;
                                     let mut r = w-begin;
                                     if hex { r /= 3; }
-                                    self.mem_address += (r+1) as u32; 
+                                    self.hex_view_offset += (r+1) as u32; 
                                 }
                             }
 
@@ -1066,10 +1138,10 @@ impl Windows {
                             if hex { r /= 3; }
                             if row > 1 { row -= 1; }  
                             else {
-                                if self.mem_address as i32 - (r+1) >= 0 { 
-                                    self.mem_address -= (r+1) as u32; 
+                                if self.hex_view_offset as i32 - (r+1) >= 0 { 
+                                    self.hex_view_offset -= (r+1) as u32; 
                                 }
-                                else { self.mem_address = 0; }
+                                else { self.hex_view_offset = 0; }
                             }
                         }
                         KEY_DOWN => {
@@ -1077,10 +1149,10 @@ impl Windows {
                             else { 
                                 let mut r = w-begin;
                                 if hex { r /= 3; }
-                                self.mem_address += (r+1) as u32; 
+                                self.hex_view_offset += (r+1) as u32; 
                             }
                         }
-                        0x9 => {
+                        0x9 => {//tab switch from hex to mem and back
                             if hex {
                                 hex = false;
                                 col -= begin;//remove offset
@@ -1100,7 +1172,7 @@ impl Windows {
                             let key = (ch as u8) as char;
                             if (key.is_ascii() && !hex) || (hex && key.is_ascii_hexdigit()) {
                                 if hex {			// if in hex win...   
-                                    let addr = self.mem_address + (((col-begin)/3) + ((row-1)*(((w+3)-begin)/3))) as u32;
+                                    let addr = self.hex_view_offset + (((col-begin)/3) + ((row-1)*(((w+3)-begin)/3))) as u32;
                                     let mut val = self.cpu_reader.borrow_mut().read_byte(addr) as i32;
 
                                     if ch >= 65 && ch <= 70	{// get correct val    
@@ -1120,7 +1192,7 @@ impl Windows {
                                     self.cpu_reader.borrow_mut().write_byte(addr, val as u8);
                                 }
                                 else {
-                                    let addr = self.mem_address + ((col-begin) + ((row-1)*((w+1)-begin))) as u32;
+                                    let addr = self.hex_view_offset + ((col-begin) + ((row-1)*((w+1)-begin))) as u32;
                                     self.cpu_reader.borrow_mut().write_byte(addr, ch as u8);
                                 }
                                 if col < w { col += 1; }
@@ -1130,7 +1202,7 @@ impl Windows {
                                         col = begin;
                                         let mut r = w-begin;
                                         if hex { r = r/3; }
-                                        self.mem_address += (r+1) as u32; 
+                                        self.hex_view_offset += (r+1) as u32; 
                                     }
                                 }
                                 if (col) % 3 == 0 && hex { col += 1; }

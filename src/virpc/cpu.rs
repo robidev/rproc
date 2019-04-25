@@ -1,11 +1,9 @@
-#![allow(non_snake_case)]
+//#![allow(non_snake_case)]
 // The CPU
 use crate::virpc::memory;
 use crate::virpc::opcodes;
 use std::cell::RefCell;
 use std::rc::Rc;
-use crate::utils;
-use std::fmt;
 use ncurses::*;
 
 use opcodes::ArgumentSize;
@@ -22,17 +20,14 @@ pub const STACK: u32 = 0x00080000;
 
 pub const PC_REG: u32 = 0xF000;
 pub const STACK_REG: u32 = 0xF004;
-pub const A_REG: u32 = 0xF008;
-pub const B_REG: u32 = 0xF00B;
-pub const C_REG: u32 = 0xF010;
+//pub const A_REG: u32 = 0xF008;
+//pub const B_REG: u32 = 0xF00B;
+//pub const C_REG: u32 = 0xF010;
 
 // status flags for P register
 pub enum StatusFlag {
     Carry            = 1 << 0,
     Zero             = 1 << 1,
-    InterruptDisable = 1 << 2,
-    DecimalMode      = 1 << 3,
-    Break            = 1 << 4,
     Unused           = 1 << 5,
     Overflow         = 1 << 6,
     Negative         = 1 << 7,
@@ -81,10 +76,6 @@ impl CPU {
             data : CPU::get_variables_list(),
             labels : Vec::new(),
         }))
-    }
-
-    pub fn destroy(&mut self) {
-        self.data.clear();
     }
 
     pub fn set_references(&mut self, memref: memory::MemShared) {
@@ -289,20 +280,20 @@ impl CPU {
                         if self.instruction.arg[2] == STACK_REG {
                             // add arg1 local var
                                 let s = format!("LOCALVAR_{:08X}",self.instruction.arg[1]+self.read_int_le(self.instruction.arg[2])); 
-                                index = CPU::add_new_item(&mut self.data, CPU::new_Item(s, d,self.instruction.arg[1]) );
+                                index = CPU::add_new_item(&mut self.data, CPU::new_item(s, d,self.instruction.arg[1]) );
                                 self.instruction.arg_index[2] = index;//index of arg in list
                         }
                         else {
                             if self.instruction.arg[2] > BSS {
                                 // add arg2 to global var /reg
                                 let s = format!("VAR_{:08X}",self.instruction.arg[1]+self.read_int_le(self.instruction.arg[2])); 
-                                index = CPU::add_new_item(&mut self.data, CPU::new_Item(s, d,self.instruction.arg[1]) );
+                                index = CPU::add_new_item(&mut self.data, CPU::new_item(s, d,self.instruction.arg[1]) );
                                 self.instruction.arg_index[2] = index;//index of arg in list
                             }
                             else {
                                 // add arg2 to global const 
                                 let s = format!("CONST_{:08X}",self.instruction.arg[1]+self.read_int_le(self.instruction.arg[2])); 
-                                index = CPU::add_new_item(&mut self.data, CPU::new_Item(s, d,self.instruction.arg[1]) );
+                                index = CPU::add_new_item(&mut self.data, CPU::new_item(s, d,self.instruction.arg[1]) );
                                 self.instruction.arg_index[2] = index;//index of arg in list
                             }
                         }                               
@@ -310,7 +301,7 @@ impl CPU {
                     else {//str([arg2+sp]=arg0)
                         //value from VAR[arg1+[arg2]]
                         let s = format!("LOCALVAR_{:08X}",self.instruction.arg[1]+self.instruction.arg[2]); 
-                        index = CPU::add_new_item(&mut self.data, CPU::new_Item(s, d,self.instruction.arg[1]) );
+                        index = CPU::add_new_item(&mut self.data, CPU::new_item(s, d,self.instruction.arg[1]) );
                         self.instruction.arg_index[2] = index;//index of arg in list
                     }
                 }
@@ -320,7 +311,7 @@ impl CPU {
                 let d = " ".to_string();
                 if self.instruction.args & 0x04 == 0 && self.instruction.args & 0x02 == 0 {
                     let s = format!("LABEL_{:08X}",self.instruction.arg[0] + self.instruction.arg[1]);
-                    let index = CPU::add_new_item(&mut self.data, CPU::new_Item(s, d,self.instruction.arg[0]) );
+                    let index = CPU::add_new_item(&mut self.data, CPU::new_item(s, d,self.instruction.arg[0]) );
                     self.instruction.arg_index[0] = index;//index of arg in list
                 }
             },
@@ -331,23 +322,23 @@ impl CPU {
                 if self.instruction.args & 0x02 == 0 { s = format!("CONST_{:08X}",self.instruction.arg[1]); }
                 else { s = format!("REF_{:08X}",self.instruction.arg[1]); }
 
-                self.instruction.arg_index[1] = CPU::add_new_item(&mut self.data, CPU::new_Item(s, d.clone(),self.instruction.arg[1]) );
+                self.instruction.arg_index[1] = CPU::add_new_item(&mut self.data, CPU::new_item(s, d.clone(),self.instruction.arg[1]) );
 
                 if self.instruction.args & 0x04 == 0 {
                     if self.instruction.arg_index[1] < 9 {
                         let s = format!("{}",self.get_mem_label(self.instruction.arg[0]));
-                        let index = CPU::add_new_item(&mut self.data, CPU::new_Item(s, d, self.instruction.arg[0]) );
+                        let index = CPU::add_new_item(&mut self.data, CPU::new_item(s, d, self.instruction.arg[0]) );
                         self.instruction.arg_index[0] = index;//index of arg in list
                     }
                     else {
                         let s = format!("{} (pc+{})",self.get_mem_label(self.instruction.arg[0] + self.prev_pc), self.instruction.arg[0]);
-                        let index = CPU::add_new_item(&mut self.data, CPU::new_Item(s, d,self.instruction.arg[0]) );
+                        let index = CPU::add_new_item(&mut self.data, CPU::new_item(s, d,self.instruction.arg[0]) );
                         self.instruction.arg_index[0] = index;//index of arg in list
                     }
                 } 
                 else {
                     let s = format!("REF_[{:08X}]",self.instruction.arg[0]);
-                    let index = CPU::add_new_item(&mut self.data, CPU::new_Item(s, d,self.instruction.arg[0]) );
+                    let index = CPU::add_new_item(&mut self.data, CPU::new_item(s, d,self.instruction.arg[0]) );
                     self.instruction.arg_index[0] = index;//index of arg in list
                 }
             },
@@ -367,7 +358,7 @@ impl CPU {
                             MEMORY...STACK => { s = format!("VAR_{:08X}",self.instruction.arg[0]); v=self.instruction.arg[0]; },//heap
                             _ => {},
                         }*/
-                        self.instruction.arg_index[i] = CPU::add_new_item(&mut self.data, CPU::new_Item(s, d, v) );
+                        self.instruction.arg_index[i] = CPU::add_new_item(&mut self.data, CPU::new_item(s, d, v) );
                     }
                     else {
                         let mut s;
@@ -377,7 +368,7 @@ impl CPU {
                             s = format!("CONST_{:08X}",self.instruction.arg[i]);
                         }
                         
-                        self.instruction.arg_index[i] = CPU::add_new_item(&mut self.data, CPU::new_Item(s, d,self.instruction.arg[i]) );                       
+                        self.instruction.arg_index[i] = CPU::add_new_item(&mut self.data, CPU::new_item(s, d,self.instruction.arg[i]) );                       
                     }
                 }
             },
@@ -402,7 +393,7 @@ impl CPU {
         (items.len()-1) as u32
     }
 
-    pub fn new_Item (n : String, d : String, v : u32) -> Items {
+    pub fn new_item (n : String, d : String, v : u32) -> Items {
         Items {
             name : n,
             description : d,
@@ -424,6 +415,7 @@ impl CPU {
         //put @ addr in memory (cannot insert, only overwrite, or complete re-assemble-> fixed code with only label-jumps, data/lib/stack section)
     }
 
+    /*
     pub fn text_to_instruction(&mut self, line : &str) {
         //parse text, and return a cpu.instruction object
         // b/i INSTRUCTION arg/[arg] // TODO : should these be values or addresses?
@@ -462,7 +454,7 @@ impl CPU {
             }
         }
     }
-
+    */
     pub fn instruction_to_text(&mut self) -> std::string::String {
         let mut s;
         s = format!("${:04X}:", self.prev_pc);
@@ -552,11 +544,11 @@ impl CPU {
     pub fn get_variables_list() -> Vec<Items> {
         //include 'libs', global calls, local jumps (since last call, with unmatched ret.)
         let mut litems: Vec<Items> = Vec::new();
-        litems.push(CPU::new_Item("register  (0xF000)".to_string(), " ".to_string(),0));//agree on register range
-        litems.push(CPU::new_Item("new const  (code)".to_string(), " ".to_string(),0));//allocate byte or int in code
-        litems.push(CPU::new_Item("new label/var  (code/0x10000)".to_string(), " ".to_string(),0));//agree on stack origin (since last call, with unmatched ret.)
-        litems.push(CPU::new_Item("new bss  (0xE000)".to_string(), " ".to_string(),0));//allocate static data in bss(memory location)
-        litems.push(CPU::new_Item("-existing-".to_string(), " ".to_string(),0));
+        litems.push(CPU::new_item("register  (0xF000)".to_string(), " ".to_string(),0));//agree on register range
+        litems.push(CPU::new_item("new const  (code)".to_string(), " ".to_string(),0));//allocate byte or int in code
+        litems.push(CPU::new_item("new label/var  (code/0x10000)".to_string(), " ".to_string(),0));//agree on stack origin (since last call, with unmatched ret.)
+        litems.push(CPU::new_item("new bss  (0xE000)".to_string(), " ".to_string(),0));//allocate static data in bss(memory location)
+        litems.push(CPU::new_item("-existing-".to_string(), " ".to_string(),0));
         litems
     }
 
