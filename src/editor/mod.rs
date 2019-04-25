@@ -531,7 +531,7 @@ impl Windows {
                 }
                 0xa => {
                     select = item_index(current_item(menu));
-                    s = format!("CONST_{}",select);
+                    s = format!("CONST_{:08X}",select);
                     v = select as u32;
                     self.edit_mode[1] = 0;
                     self.edit_item[self.cur_arg as usize] = cpu::CPU::add_new_item(&mut self.cpu_reader.borrow_mut().data, cpu::CPU::new_item(s, d, v) ) as i32;
@@ -623,7 +623,7 @@ impl Windows {
                 //KEY_RIGHT => {}
                 0xa => {//enter
                     let v = Windows::string_to_val(val);
-                    s = format!("CONST_{}",v);
+                    s = format!("CONST_{:08X}",v);
                     self.edit_item[self.cur_arg as usize] = cpu::CPU::add_new_item(&mut self.cpu_reader.borrow_mut().data, cpu::CPU::new_item(s, d, v) ) as i32;
                     self.modify();
                     break;
@@ -652,7 +652,7 @@ impl Windows {
         let mut val : Vec<String> = Vec::new();//String::from("");
         let adr = self.cpu_reader.borrow_mut().get_free_bss();
         val.push(format!("0x{:08X}",adr).to_string());
-        val.push(format!("BSS_{}",adr).to_string());
+        val.push(format!("BSS_{:08X}",adr).to_string());
         val.push("1".to_string());
 
         let mut screen_height = 0;
@@ -674,7 +674,7 @@ impl Windows {
         let mut val : Vec<String> = Vec::new();//String::from("");
         let adr = self.edit_pc;
         val.push(format!("0x{:08X}",adr).to_string());
-        val.push(format!("LBL_{}",adr).to_string());
+        val.push(format!("LBL_{:08X}",adr).to_string());
         val.push("1".to_string());
 
         let mut screen_height = 0;
@@ -697,7 +697,7 @@ impl Windows {
         let mut val : Vec<String> = Vec::new();//String::from("");
         let adr = self.cpu_reader.borrow_mut().get_free_mem();
         val.push(format!("0x{:08X}",adr).to_string());
-        val.push(format!("VAR_{}",adr).to_string());
+        val.push(format!("VAR_{:08X}",adr).to_string());
         val.push("1".to_string());
 
         let mut screen_height = 0;
@@ -873,46 +873,72 @@ impl Windows {
         Windows::destroy_win(lwin_menu);
     }
 
-    fn string_to_val(val : String) -> u32 {
-        if val.len() > 2 && val.as_bytes()[0] == 0x30 && (val.as_bytes()[1] == 0x58 || val.as_bytes()[1] == 0x78) {
-            let without_prefix = val.trim_left_matches("0x");
-            match u32::from_str_radix(without_prefix, 16) {
-                Ok(u) => u,
-                Err(_) => 0xDEADBEEF,
-            }
-        }
-        else {
-            match u32::from_str_radix(val.as_str(), 10) {
-                Ok(u) => u,
-                Err(_) => {
-                    match u32::from_str_radix(val.as_str(), 16) {
-                        Ok(u) => u,
-                        Err(_) => 0xDEADDEAD,
-                    }
-                }
-            }
-        }
-    }
-
     //find labels in code or mem
     fn search_label(&mut self) {
         //TODO add search for label in code -> window(show list of labels, set pc to selected one)
         //TODO add search for label in hex-editor -> window(list of labels, set mem_highlight and mem-address to selected one)
         //window with list of labels (code:/bss:/mem:), possibly filter?
+        //
         let mut screen_height = 0;
         let mut screen_width = 0;
         getmaxyx(stdscr(), &mut screen_height, &mut screen_width);
-        let lwin_menu = Windows::create_win(" ",self.wd(3,'h'), self.wd(3,'w'), self.wd(3,'y'), self.wd(3,'x'));
-        mvwprintw(lwin_menu,0,1," search label <CODE/MEM>");
-        let mut items = Vec::new();//self.cpu_reader.borrow_mut().reg_opts();
-        let select :i32 = 0;
-        let menu = Windows::create_menu(&mut items,lwin_menu,select as u32);
+        let lwin_menu = Windows::create_win(" ",self.wd(1,'h') + self.wd(3,'h') + self.wd(4,'h'), self.wd(3,'w'), self.wd(1,'y'), self.wd(1,'x'));
+
+        let mut items = Vec::new();
+        if self.focus == 0 {
+            mvwprintw(lwin_menu,0,1," search label <CODE>");
+            items = self.cpu_reader.borrow_mut().get_code_label_list();
+        }
+        if self.focus == 4 {
+            mvwprintw(lwin_menu,0,1," search label <MEM>");
+            items = self.cpu_reader.borrow_mut().get_mem_label_list();
+        }
+        let menu = Windows::create_menu(&mut items,lwin_menu,0);
         wrefresh(lwin_menu);
 
-        //TODO
+        let mut ch = 0;
+        while ch != 27 as i32 { // ESC pressed, so quit
+            ch = getch();
+            match ch {
+                KEY_UP => { 
+                    menu_driver(menu, REQ_UP_ITEM);
+                    let s = item_description(current_item(menu)).clone();
+                    let lval : u32 = s.parse().unwrap();
+                    let lbl =  match self.cpu_reader.borrow_mut().get_label(lval) {
+                        Some(ll) => { ll },
+                        None => {cpu::Label { tag : "UNKNOOWN".to_string(), address : 0x0, size : 0 }},
+                    };
+                    self.set_memview_focus(lbl.address,lbl.size);
+                    self.refresh_memview();
+                    if self.focus == 0 {
+                        self.reset_edit();
+                    }
+                }
+                KEY_DOWN => { 
+                    menu_driver(menu, REQ_DOWN_ITEM);
+                    let s = item_description(current_item(menu)).clone();
+                    let lval : u32 = s.parse().unwrap();
+                    let lbl =  match self.cpu_reader.borrow_mut().get_label(lval) {
+                        Some(ll) => { ll },
+                        None => {cpu::Label { tag : "UNKNOOWN".to_string(), address : 0x0, size : 0 }},
+                    };
+                    self.set_memview_focus(lbl.address,lbl.size);
+                    self.refresh_memview();
+                    if self.focus == 0 {
+                        self.reset_edit();
+                    }
+                }
+                _ => {
+                    menu_driver(menu, ch);
+                }
+            }
+            wrefresh(lwin_menu);
+        }
 
         Windows::destroy_menu(menu,&mut items);
         Windows::destroy_win(lwin_menu);
+        self.screen_height = 0;//trigger an refresh_screen
+        self.resize_check();//show the edited value
     }
 
     //modify values based on sub-meny
@@ -956,9 +982,6 @@ impl Windows {
                 }
                 self.screen_height = 0;//trigger an refresh_screen
                 self.resize_check();//show the edited value
-            }
-            0x66 => {
-                self.search_label();
             }
             _ => {
                 match self.focus {
@@ -1006,6 +1029,9 @@ impl Windows {
                 self.edit_line += 1;
                 self.reset_edit();
                 self.refresh_screen();
+            }
+            0x66 => {
+                self.search_label();
             }
             _ => {
             }
@@ -1213,6 +1239,9 @@ impl Windows {
                 }
                 curs_set(CURSOR_VISIBILITY::CURSOR_INVISIBLE);
             }
+            0x66 => {
+                self.search_label();
+            }
             _ => {
                 self.refresh_memview();
             }
@@ -1262,5 +1291,26 @@ impl Windows {
         
         items.clear();//clear/drop of items should be after free of menu, to prevent malloc issues
         drop(items);
+    }
+
+    fn string_to_val(val : String) -> u32 {
+        if val.len() > 2 && val.as_bytes()[0] == 0x30 && (val.as_bytes()[1] == 0x58 || val.as_bytes()[1] == 0x78) {
+            let without_prefix = val.trim_left_matches("0x");
+            match u32::from_str_radix(without_prefix, 16) {
+                Ok(u) => u,
+                Err(_) => 0xDEADBEEF,
+            }
+        }
+        else {
+            match u32::from_str_radix(val.as_str(), 10) {
+                Ok(u) => u,
+                Err(_) => {
+                    match u32::from_str_radix(val.as_str(), 16) {
+                        Ok(u) => u,
+                        Err(_) => 0xDEADDEAD,
+                    }
+                }
+            }
+        }
     }
 }

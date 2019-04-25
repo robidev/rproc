@@ -346,18 +346,8 @@ impl CPU {
                 for i in 0..(self.instruction.size as usize) {
                     let d = " ".to_string();
                     if (self.instruction.args << i) & 0x04 > 0 || (i == 0 && self.instruction.args & 0x04 == 0) {//arg 0 is always a ref, subsequent are const or ref
-                        //let mut s = "".to_string();
-                        //let mut v = 0;
                         let s = format!("{}",self.get_mem_label(self.instruction.arg[i])); 
                         let v=self.instruction.arg[i];
-                        /*match self.instruction.arg[i] {
-                            RESET_VECTOR => { s = "$RESET".to_string(); },
-                            CODE...BSS => { s = format!("LABEL_{:08X}",self.instruction.arg[i]); v=self.instruction.arg[i]; },
-                            BSS...REGISTERS => { s = format!("REG_{:08X}",self.instruction.arg[i]); v=self.instruction.arg[i]; },
-                            REGISTERS...MEMORY => { s = format!("BSS_{:08X}",self.instruction.arg[i]); v=self.instruction.arg[i]; },
-                            MEMORY...STACK => { s = format!("VAR_{:08X}",self.instruction.arg[0]); v=self.instruction.arg[0]; },//heap
-                            _ => {},
-                        }*/
                         self.instruction.arg_index[i] = CPU::add_new_item(&mut self.data, CPU::new_item(s, d, v) );
                     }
                     else {
@@ -719,11 +709,11 @@ impl CPU {
             Some(lbl) => { format!("{}", lbl.tag).to_string() }
             None => { 
                 match adr {
-                    0...BSS => {format!("LBL_{}",adr).to_string()},
-                    BSS...REGISTERS => {format!("BSS_{}",adr).to_string()},
-                    REGISTERS...MEMORY => {format!("REG_{}",adr).to_string()},
-                    MEMORY...STACK => {format!("VAR_{}",adr).to_string()},
-                    _ => {format!("adr_{}",adr).to_string()},
+                    0...BSS => {format!("LBL_{:08X}",adr).to_string()},
+                    BSS...REGISTERS => {format!("BSS_{:08X}",adr).to_string()},
+                    REGISTERS...MEMORY => {format!("REG_{:08X}",adr).to_string()},
+                    MEMORY...STACK => {format!("VAR_{:08X}",adr).to_string()},
+                    _ => {format!("adr_{:08X}",adr).to_string()},
                 }
             }
         }
