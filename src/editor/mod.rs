@@ -133,11 +133,6 @@ impl Windows {
         win.items3 = win.cpu_reader.borrow_mut().get_addressing_mode_list();
 
         win.cpu_reader.borrow_mut().add_new_label("reset".to_string(),0x0, 1);
-        win.cpu_reader.borrow_mut().add_new_label("2nd".to_string(),0x9, 3);
-        win.cpu_reader.borrow_mut().add_new_label("3rd".to_string(),0x1b, 3);
-        win.cpu_reader.borrow_mut().add_new_label("func1".to_string(),0x21, 3);
-        win.cpu_reader.borrow_mut().add_new_label("bss_one".to_string(),0xe000, 1);
-        win.cpu_reader.borrow_mut().add_new_label("bss2".to_string(),0xe004, 1);
 
         refresh();//needed for win size
         win.menu1 = Windows::create_menu(&mut win.items1,win.win1,0);
@@ -187,7 +182,7 @@ impl Windows {
                     'w' => { WIN1_MAXWIDTH },
                     'u' => { sh/2 },//y-end
                     'v' => { WIN1_MAXWIDTH },//x-end
-                    _ => { panic!("dimension index not defined") },
+                    _ => { 0 },
                 }
             }
             2 => {
@@ -198,7 +193,7 @@ impl Windows {
                     'w' => { sw-WIN1_MAXWIDTH },
                     'u' => { sh/2 },
                     'v' => { sw },
-                    _ => { panic!("dimension index not defined") },
+                    _ => { 0 },
                 }
             }
             3 => {
@@ -209,7 +204,7 @@ impl Windows {
                     'w' => { WIN1_MAXWIDTH },
                     'u' => { sh-WIN4_HEIGHT },
                     'v' => { WIN1_MAXWIDTH },
-                    _ => { panic!("dimension index not defined") },
+                    _ => { 0 },
                 }
             }
             4 => {
@@ -220,7 +215,7 @@ impl Windows {
                     'w' => { WIN1_MAXWIDTH },
                     'u' => { sh },
                     'v' => { WIN1_MAXWIDTH },
-                    _ => { panic!("dimension index not defined") },
+                    _ => { 0 },
                 }
             }
             5 => {
@@ -231,10 +226,10 @@ impl Windows {
                     'w' => { sw-WIN1_MAXWIDTH },
                     'u' => { sh },
                     'v' => { sw },
-                    _ => { panic!("dimension index not defined") },
+                    _ => { 0 },
                 }
             }
-            _ => { panic!("window index not defined") },
+            _ => { 0 },
         }
 
     }

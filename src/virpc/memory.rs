@@ -7,6 +7,7 @@ pub type MemShared = Rc<RefCell<Memory>>;
 
 pub enum MemType {
     Ram,
+    Void,
     //Rom,
     //Io,
 }
@@ -36,35 +37,25 @@ impl MemBank {
                 for _ in 0..MEM_SIZE {
                     mem_bank.data.push(0);
                 }
-
                 mem_bank.read_only = false;
             },
-            //MemType::Io => {
-            //    mem_bank.data = Vec::<u8>::with_capacity(0x1000);
-            //    for _ in 0..0x1000 {
-            //        mem_bank.data.push(0);
-            //    }
-
-            //    mem_bank.offset = 0xD000;
-            //    mem_bank.read_only = false;
-            //}
+            MemType::Void => {                
+            }
         }
-        
         mem_bank
     }
-
 
     pub fn write(&mut self, addr: u32, val: u8) {
         match self.bank_type {
             MemType::Ram => self.data[(addr - self.offset) as usize] = val,
-            //_ => panic!("Can't write to ROM!")
+            MemType::Void => {},
         }
     }
 
-
     pub fn read(&mut self, addr: u32) -> u8 {
         match self.bank_type {
-            _ => self.data[(addr - self.offset) as usize]
+            MemType::Ram => self.data[(addr - self.offset) as usize],
+            MemType::Void => { 0x0 },
         }
     }    
 }
@@ -73,16 +64,14 @@ impl MemBank {
 // collective memory storage with all the banks and bank switching support
 pub struct Memory {
     ram:     MemBank,
-
-    // bank switching flags
-    //pub exrom:      bool,
-
+    void:    MemBank,
 }
 
 impl Memory {
     pub fn new_shared() -> MemShared {
         Rc::new(RefCell::new(Memory {
             ram:     MemBank::new(MemType::Ram),     // MEM_SIZE
+            void:     MemBank::new(MemType::Void),     // Void
         }))
     }
     
@@ -91,8 +80,7 @@ impl Memory {
         const RAMSIZE: u32 = (MEM_SIZE-1) as u32;
         match addr {
             0x0000...RAMSIZE => &mut self.ram,
-            //0x10000...0x1FFFF => ,
-            _ => panic!("Address out of memory range")
+            _                => &mut self.void,
         }
     }
 
@@ -100,14 +88,12 @@ impl Memory {
     pub fn get_ram_bank(&mut self, bank_type: MemType) -> (&mut MemBank) {
         match bank_type {
             MemType::Ram => &mut self.ram,
-            //MemType::Io  => &mut self.io,
-            //_            => panic!("Unrecognized RAM bank"),
+            _            => &mut self.void,
         }
     }   
     
     pub fn reset(&mut self) {
-        self.write_byte(0x0000, 0xFF);
-        self.write_byte(0x0001, 0x07); // enable kernal, chargen and basic ROMs
+        // enable kernal, chargen and basic ROMs
     }
 
     // Write a byte to memory - returns whether RAM was written (true) or RAM under ROM (false)

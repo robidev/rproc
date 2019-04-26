@@ -400,7 +400,6 @@ pub fn run(cpu: &mut cpu::CPU) -> bool {
                 }
             };
         },
-        //_ => panic!("Unknown instruction: {} at ${:04X}", cpu.instruction, cpu.pc)
     }
     // instruction finished execution?
     true

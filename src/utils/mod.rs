@@ -1,5 +1,4 @@
 // helper utility functions and macros
-
 use std::error::Error;
 use std::io::prelude::*;
 use std::fs::File;
@@ -32,7 +31,7 @@ pub fn open_file(filename: &str, offset: u64) -> Vec<u8> {
     
     match result {
         Err(why)   => panic!("Error reading file: {}", Error::description(&why)),
-        Ok(result) => println!("Read {}: {} bytes", path.display(), result),
+        Ok(_) => {},//println!("Read {}: {} bytes", path.display(), result),
     };    
 
     file_data
@@ -71,7 +70,7 @@ pub fn fetch_c64_color_rgba(idx: u8) -> u32 {
         0x0D  => 0x00ACEA88,
         0x0E  => 0x007C70DA,
         0x0F  => 0x00ABABAB,
-        _ => panic!("Unknown color!"),
+        _     => 0x00000000,
     }
 }
 

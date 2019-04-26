@@ -5,8 +5,6 @@ extern crate byteorder;
 extern crate num;
 extern crate ncurses;
 extern crate time;
-
-//#[macro_use]
 extern crate enum_primitive;
 
 #[macro_use]
@@ -47,21 +45,18 @@ fn main() {
     let asmcpu = cpu::CPU::new_shared();
     virpc.reset();
     virpc.run();
-    asmcpu.borrow_mut().set_references(virpc.memory);
+    asmcpu.borrow_mut().set_references(virpc.memory.clone());
     let mut _windows : Windows = Windows::new(asmcpu);
 
-    let mut ch = getch();
+    let mut ch = 0;
     while ch != 27 as i32 { // ESC pressed, so quit
+        ch = getch();
         _windows.handle_keys(ch);
         _windows.resize_check();
-        ch = getch();
 
-        //virpc.run();
-
+        virpc.run();
         std::thread::sleep(std::time::Duration::from_millis(50));
     }
     _windows.destroy();
-
-    //asmcpu.borrow_mut().text_to_instruction("    hello world [test]; aaa    ");
 }
 

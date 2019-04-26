@@ -6,7 +6,6 @@ pub mod opcodes;
 pub mod video;
 
 mod clock;
-//mod io;
 
 use crate::debugger;
 use minifb::*;
@@ -117,7 +116,7 @@ impl Virpc {
     fn load_prg(&mut self, filename: &str) {
         let prg_data = utils::open_file(filename, 0);
         let start_address: u32 = ((prg_data[1] as u32) << 8) | (prg_data[0] as u32);
-        println!("Loading {} to start location at ${:04x} ({})", filename, start_address, start_address);
+        //println!("Loading {} to start location at ${:04x} ({})", filename, start_address, start_address);
 
         for i in 2..(prg_data.len()) {
             self.memory.borrow_mut().write_byte(start_address + (i as u32) - 2, prg_data[i]);
