@@ -18,7 +18,7 @@ pub const REGISTERS: u32 = 0x0000F000;//til 0x0000FFFF
 pub const MEMORY: u32 = 0x00010000;
 pub const STACK: u32 = 0x00080000;
 
-pub const PC_REG: u32 = 0xF000;
+
 pub const STACK_REG: u32 = 0xF004;
 //pub const A_REG: u32 = 0xF008;
 //pub const B_REG: u32 = 0xF00B;
@@ -62,10 +62,12 @@ pub struct CPU {
     pub prev_pc: u32,
     pub data : Vec<Items>,
     pub labels : Vec<Label>,
+    pub pc_reg : u32,
+    pc : u32,
 }
 
 impl CPU {
-    pub fn new_shared() -> CPUShared {
+    pub fn new_shared(pc : u32) -> CPUShared {
         Rc::new(RefCell::new(CPU {
             p:  0,
             mem_ref:  None,
@@ -75,6 +77,8 @@ impl CPU {
             prev_pc: 0,
             data : CPU::get_variables_list(),
             labels : Vec::new(),
+            pc_reg : pc,
+            pc : 0,
         }))
     }
 
@@ -82,12 +86,22 @@ impl CPU {
         self.mem_ref = Some(memref);
     }    
 
-    pub fn set_pc(&self, pc : u32) {
-        as_ref!(self.mem_ref).write_int_le(PC_REG,pc);
+    pub fn set_pc(&mut self, lpc : u32) {
+        if self.pc_reg == 0 {
+            self.pc = lpc;
+        }
+        else {
+            as_ref!(self.mem_ref).write_int_le(self.pc_reg,lpc);            
+        }
     }
 
     pub fn get_pc(&self) -> u32 {
-        as_ref!(self.mem_ref).read_int_le(PC_REG)
+        if self.pc_reg == 0 {
+            self.pc
+        }
+        else {
+            as_ref!(self.mem_ref).read_int_le(self.pc_reg)
+        }
     }
     
     pub fn set_status_flag(&mut self, flag: StatusFlag, value: bool) {
@@ -237,7 +251,7 @@ impl CPU {
                         if self.instruction.args & 0x01 == 0 {//pop(a=[[stack+b]++]) = ldr 1 b010,
                             //arg1=const
                             if self.instruction.arg[2] == STACK_REG  {
-                                if self.instruction.arg[0] == PC_REG && self.instruction.args & 0x04 == 0 {
+                                if self.instruction.arg[0] == pc_reg && self.instruction.args & 0x04 == 0 {
                                     //pop
                                 }
                                 else {

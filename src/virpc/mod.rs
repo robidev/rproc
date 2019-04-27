@@ -15,7 +15,7 @@ pub const SCREEN_WIDTH:  usize = 384; // extend 20 pixels left and right for the
 pub const SCREEN_HEIGHT: usize = 272; // extend 36 pixels top and down for the borders
 
 const CLOCK_FREQ: f64 = 50.0;
-
+pub const PC_REG: u32 = 0xF000;
 
 pub struct Virpc {
     pub main_window: minifb::Window,
@@ -34,7 +34,7 @@ pub struct Virpc {
 impl Virpc {
     pub fn new(window_scale: Scale, debugger_on: bool, prg_to_load: &str) -> Virpc {
         let memory = memory::Memory::new_shared();
-        let cpu    = cpu::CPU::new_shared();
+        let cpu    = cpu::CPU::new_shared(PC_REG);
         let video  = video::Video::new_shared();
 
         let mut virpc = Virpc {
@@ -98,9 +98,8 @@ impl Virpc {
                 None => (),
             }
             // redraw the screen and process input on every x cycle
-            if self.cycle_count % 2 == 0 {
+            if self.cycle_count % 20 == 0 {
                 let _ = self.main_window.update_with_buffer(&self.video.borrow_mut().window_buffer);
-                //self.cpu.borrow_mut().set_nmi(true);
             }
 
             if self.main_window.is_key_pressed(Key::F12, KeyRepeat::No) {

@@ -14,7 +14,6 @@ mod debugger;
 mod editor;
 
 use virpc::cpu;
-
 use minifb::*;
 use std::env;
 use ncurses::*;
@@ -42,7 +41,7 @@ fn main() {
     
     let mut virpc = virpc::Virpc::new(window_scale, debugger_on, &prg_to_load);
 
-    let asmcpu = cpu::CPU::new_shared();
+    let asmcpu = cpu::CPU::new_shared(0xFF00);
     virpc.reset();
     virpc.run();
     asmcpu.borrow_mut().set_references(virpc.memory.clone());
