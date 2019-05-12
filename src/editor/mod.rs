@@ -4,6 +4,7 @@ use crate::virpc::cpu;
 
 static COLOR_PAIR_DEFAULT: i16 = 1;
 static COLOR_PAIR_KEYWORD: i16 = 2;
+static COLOR_PAIR_CURRENT: i16 = 3;
 static MEMORY_SIZE: u32 = 0x080000;
 
 //TODO sound chip
@@ -122,6 +123,7 @@ impl Windows {
         start_color();
         init_pair(COLOR_PAIR_DEFAULT, COLOR_WHITE, COLOR_BLACK);
         init_pair(COLOR_PAIR_KEYWORD, COLOR_BLACK, COLOR_WHITE);
+        init_pair(COLOR_PAIR_CURRENT, COLOR_WHITE, COLOR_GREEN);
 
         refresh();//needed for screen size
         getmaxyx(stdscr(), &mut win.screen_height, &mut win.screen_width);
@@ -411,6 +413,9 @@ impl Windows {
                 }
             }
             if i >= end - ((self.wd(2,'h')-2) as u32) {
+                if self.current_pc >= lpc && self.current_pc < tpc && self.virpc.status() == false {
+                    wattrset(self.win2_sub, COLOR_PAIR(3));
+                }
                 wprintw(self.win2_sub, self.cpu_reader.borrow_mut().instruction_to_text().as_str());
                 wattrset(self.win2_sub, COLOR_PAIR(1));
             }
@@ -1050,16 +1055,22 @@ impl Windows {
                     self.virpc.stop();
                     self.run_program = false;
                 }
+                self.refresh_fast();
+                self.refresh_code();
             }
             0x10e => {//<F6 reset>
                 //set pc of virpc to 0
                 self.virpc.reset();
+                self.refresh_fast();
+                self.refresh_code();
             }
             0x110 => {//<F8 step>
                 //perform a cpu-step
                 self.virpc.continue_cpu();
                 self.virpc.run();
                 self.virpc.stop();
+                self.refresh_fast();
+                self.refresh_code();
             }
             0x111 => {//<F9 breakpoint>
                 //set virpc::toggle-breakpoint

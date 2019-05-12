@@ -134,8 +134,8 @@ impl CPU {
     }
 
     pub fn update(&mut self) {
-        match self.state {
-            CPUState::FetchOp => {
+        //match self.state {
+        //    CPUState::FetchOp => {
                 let next_op = self.next_byte(); //retrieve next byte
                 match opcodes::get_instruction(next_op) { //retrieve instruction
                     Some((opcode, size, arguments, addr_type)) => {
@@ -148,18 +148,18 @@ impl CPU {
                     None => panic!("Can't fetch instruction")
                 }
                 self.state = CPUState::FetchOperandAddr;
-            },
-            CPUState::FetchOperandAddr => {
+        //    },
+        //    CPUState::FetchOperandAddr => {
                 if opcodes::fetch_operand_addr(self) {
                     self.state = CPUState::ExecuteOp;
                 }
-            }
-            CPUState::ExecuteOp => {
+        //    }
+        //    CPUState::ExecuteOp => {
                 if opcodes::run(self) {
                     self.state = CPUState::FetchOp;
                 }
-            }
-        }
+        //    }
+        //}
     }
 
     pub fn next_byte(&mut self) -> u8 {
