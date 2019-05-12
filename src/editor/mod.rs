@@ -1,4 +1,5 @@
 use ncurses::*;
+use crate::virpc;
 use crate::virpc::cpu;
 
 static COLOR_PAIR_DEFAULT: i16 = 1;
@@ -70,10 +71,12 @@ pub struct Windows {
     mem_address : u32,
     mem_highlight : u32,
     mem_highlight_size : u32,
+    virpc : virpc::Virpc,
+    run_program : bool,
 }
 
 impl Windows {
-    pub fn new(cpu : cpu::CPUShared) -> Windows {
+    pub fn new(cpu : cpu::CPUShared, virpc : virpc::Virpc) -> Windows {
 
         let mut win = Windows {
             menu1 : 0 as MENU,
@@ -108,6 +111,8 @@ impl Windows {
             mem_address : 0,
             mem_highlight : 0,
             mem_highlight_size : 0,
+            virpc : virpc,
+            run_program : false,
         };
 
         initscr();
@@ -158,6 +163,10 @@ impl Windows {
         Windows::destroy_win(self.win5);
         clear();
         endwin();
+    }
+
+    pub fn run_virpc(&mut self) {
+        self.virpc.run();
     }
 
     //////////////////////////////////////////////
@@ -276,9 +285,18 @@ impl Windows {
         }
     }
 
-    fn refresh_screen(&mut self) {
-        let s = format!("edit:{:08X},current:{:08X} <F5 run/pause> <F6 reset> <F9 breakpoint> <F10 step>",self.edit_line,self.current_pc);
+    pub fn refresh_fast(&mut self) {
+        self.current_pc = self.cpu_reader.borrow_mut().read_int_le(0xF000);
+        let status = match self.virpc.status() {
+            true => "running",
+            false => "stopped",
+        };
+        let s = format!("edit:{:08X},current:{:08X} {} <F5 run/pause> <F6 reset> <F8 step> <F9 breakpoint>",self.edit_line,self.current_pc, status);
         mvprintw(0,0,s.as_str());
+        refresh();   
+    }
+
+    fn refresh_screen(&mut self) {
         match self.focus {
             0 => {
                 mvwprintw(self.win1,0,1," commands ");
@@ -1021,6 +1039,31 @@ impl Windows {
                 }
                 self.screen_height = 0;//trigger an refresh_screen
                 self.resize_check();//show the edited value
+            }
+            0x10d => {//<F5 run/pause>
+                //toggle running/stop
+                if self.run_program == false {
+                    self.virpc.continue_cpu();
+                    self.run_program = true;
+                }
+                else {
+                    self.virpc.stop();
+                    self.run_program = false;
+                }
+            }
+            0x10e => {//<F6 reset>
+                //set pc of virpc to 0
+                self.virpc.reset();
+            }
+            0x110 => {//<F8 step>
+                //perform a cpu-step
+                self.virpc.continue_cpu();
+                self.virpc.run();
+                self.virpc.stop();
+            }
+            0x111 => {//<F9 breakpoint>
+                //set virpc::toggle-breakpoint
+                self.virpc.breakpoint(self.edit_pc);
             }
             _ => {
                 match self.focus {

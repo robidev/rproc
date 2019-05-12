@@ -5,7 +5,7 @@ pub mod memory;
 pub mod opcodes;
 pub mod video;
 
-mod clock;
+//mod clock;
 
 use crate::debugger;
 use minifb::*;
@@ -14,14 +14,14 @@ use crate::utils;
 pub const SCREEN_WIDTH:  usize = 384; // extend 20 pixels left and right for the borders
 pub const SCREEN_HEIGHT: usize = 272; // extend 36 pixels top and down for the borders
 
-const CLOCK_FREQ: f64 = 50.0;
+//const CLOCK_FREQ: f64 = 50.0;
 pub const PC_REG: u32 = 0xF000;
 
 pub struct Virpc {
     pub main_window: minifb::Window,
     pub program_to_load: String,
     pub memory: memory::MemShared,
-    clock:  clock::Clock,
+    //clock:  clock::Clock,
     cpu:  cpu::CPUShared,
     video: video::VideoShared,
 
@@ -29,6 +29,8 @@ pub struct Virpc {
     powered_on: bool,
     boot_complete: bool,
     cycle_count: u32,
+    isrunning : bool,
+    breakpoint : u32,
 }
 
 impl Virpc {
@@ -42,12 +44,14 @@ impl Virpc {
             program_to_load: String::from(prg_to_load),
             memory: memory.clone(), // shared system memory (RAM, ROM, IO registers)
             video: video.clone(),
-            clock:  clock::Clock::new(CLOCK_FREQ),
+            //clock:  clock::Clock::new(CLOCK_FREQ),
             cpu:  cpu.clone(),
             debugger: if debugger_on { Some(debugger::Debugger::new()) } else { None },
             powered_on: false,
             boot_complete: false,
             cycle_count: 0,
+            isrunning : false,
+            breakpoint : 0xFFFFFFFF
         };
 
         virpc.main_window.set_position(75, 20);
@@ -84,30 +88,47 @@ impl Virpc {
         }
 
         // main virpc update - use the clock to time all the operations
-        if self.clock.tick() {
-            self.cpu.borrow_mut().update();
-            self.video.borrow_mut().update(self.cycle_count);
-
-            // update the debugger window if it exists
-            match self.debugger {
-                Some(ref mut dbg) => {
-                    if self.cycle_count % 2 == 0 {
-                        dbg.render(&mut self.cpu, &mut self.memory);
-                    }
-                },
-                None => (),
-            }
-            // redraw the screen and process input on every x cycle
-            if self.cycle_count % 20 == 0 {
-                let _ = self.main_window.update_with_buffer(&self.video.borrow_mut().window_buffer);
-            }
-
-            if self.main_window.is_key_pressed(Key::F12, KeyRepeat::No) {
-                self.reset();
-            }
-
-            self.cycle_count += 1;
+        if self.cpu.borrow_mut().get_pc() == self.breakpoint {
+            self.isrunning = false;
         }
+
+        if self.isrunning == true {
+            self.cpu.borrow_mut().update();
+        }
+
+        self.video.borrow_mut().update(self.cycle_count);
+
+        // update the debugger window if it exists
+        match self.debugger {
+            Some(ref mut dbg) => {
+                if self.cycle_count % 2 == 0 {
+                    dbg.render(&mut self.cpu, &mut self.memory);
+                }
+            },
+            None => (),
+        }
+        // redraw the screen and process input on every x cycle
+        if self.cycle_count % 20 == 0 {
+            let _ = self.main_window.update_with_buffer(&self.video.borrow_mut().window_buffer);
+        }
+
+        self.cycle_count += 1;
+    }
+
+    pub fn continue_cpu(&mut self) {
+        self.isrunning = true;
+    }
+
+    pub fn stop(&mut self) {
+        self.isrunning = false;
+    }
+
+    pub fn status(&mut self) -> bool {
+        self.isrunning
+    }
+
+    pub fn breakpoint(&mut self, adr : u32) {
+        self.breakpoint = adr;
     }
 
     // *** private functions *** //

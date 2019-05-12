@@ -125,9 +125,10 @@ impl CPU {
     }
 
     pub fn reset(&mut self) {
-        let pc = self.read_int_le(RESET_VECTOR);
-        self.set_pc(pc);
-
+        self.set_pc(RESET_VECTOR);
+        self.instruction_u8 = 0;
+        self.state = CPUState::FetchOp;
+        self.prev_pc = 0;
         // I'm only doing this to avoid dead code warning :)
         self.set_status_flag(StatusFlag::Unused, false);
     }
