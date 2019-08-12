@@ -82,7 +82,7 @@ fn main() {
 fn keyboard_thread(ch : Arc<AtomicIsize>) -> thread::JoinHandle<()> {
     thread::spawn(move || {
         let mut l_ch = 0;
-        while l_ch != 27 { // ESC pressed, so quit
+        while l_ch != 27 { // ESC pressed, so quit, TODO: make this a semaphore
             //retrieve a new character (blocking)
             l_ch = getch();
 

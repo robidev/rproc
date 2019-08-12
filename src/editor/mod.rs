@@ -1213,6 +1213,7 @@ impl Windows {
                 let h = self.wd(5,'h') - 2;
 
                 let mut ch = 0;
+                //TODO: esc cannot be caught due to catching on higher level
                 while ch != 27 as i32 { // ESC pressed, so quit
                     self.refresh_memview();
                     wmove(self.win5, row, col);
