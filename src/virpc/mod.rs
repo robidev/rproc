@@ -109,7 +109,7 @@ impl Virpc {
         }
         // redraw the screen and process input on every x cycle
         if self.cycle_count % 20 == 0 {
-            let _ = self.main_window.update_with_buffer(&self.video.borrow_mut().window_buffer);
+            let _ = self.main_window.update_with_buffer(&self.video.borrow_mut().window_buffer, SCREEN_WIDTH, SCREEN_HEIGHT);
         }
 
         self.cycle_count += 1;

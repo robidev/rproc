@@ -47,7 +47,7 @@ impl Debugger {
             self.draw_ram(memory);
             self.draw_cpu(cpu);
 
-            let _ = self.debug_window.update_with_buffer(&self.window_buffer);
+            let _ = self.debug_window.update_with_buffer(&self.window_buffer, DEBUG_W, DEBUG_H);
         }
     }
 

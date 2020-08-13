@@ -5,7 +5,7 @@ authors = ["robidev <robin.dev@gmail.com>"]
 edition = "2018"
 
 [dependencies]
-minifb = "0.10"
+minifb = "0.17"
 rand = "0.3.14"
 time = "0.1.34"
 byteorder = "1.2.2"
