@@ -233,7 +233,7 @@ impl Windows {
                 match dimension {
                     'y' => { sh/2 }, 
                     'x' => { WIN1_MAXWIDTH },
-                    'h' => { (sh/2) },
+                    'h' => { sh/2 },
                     'w' => { sw-WIN1_MAXWIDTH },
                     'u' => { sh },
                     'v' => { sw },
@@ -787,7 +787,7 @@ impl Windows {
                             Some(ll) => { ll },
                             None => {cpu::Label { tag : "UNKNOOWN".to_string(), address : 0x0, size : 0 }},
                         };
-                        val[0] = format!("{:08X}",lbl.address);;
+                        val[0] = format!("{:08X}",lbl.address);
                         val[1] = lbl.tag.clone();
                         val[2] = lbl.size.to_string();
                         mvwprintw(lwin_menu,2,16,format!("{:14}",val[0]).as_str());
@@ -820,7 +820,7 @@ impl Windows {
                             Some(ll) => { ll },
                             None => {cpu::Label { tag : "UNKNOOWN".to_string(), address : 0x0, size : 0 }},
                         };
-                        val[0] = format!("{:08X}",lbl.address);;
+                        val[0] = format!("{:08X}",lbl.address);
                         val[1] = lbl.tag.clone();
                         val[2] = lbl.size.to_string();
                         mvwprintw(lwin_menu,2,16,format!("{:14}",val[0]).as_str());
@@ -1389,7 +1389,7 @@ impl Windows {
 
     fn string_to_val(val : String) -> u32 {
         if val.len() > 2 && val.as_bytes()[0] == 0x30 && (val.as_bytes()[1] == 0x58 || val.as_bytes()[1] == 0x78) {
-            let without_prefix = val.trim_left_matches("0x");
+            let without_prefix = val.trim_start_matches("0x");
             match u32::from_str_radix(without_prefix, 16) {
                 Ok(u) => u,
                 Err(_) => 0xDEADBEEF,

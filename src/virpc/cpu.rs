@@ -13,9 +13,13 @@ pub type CPUShared = Rc<RefCell<CPU>>;
 
 pub const RESET_VECTOR: u32 = 0x00000000;
 pub const CODE: u32 = 0x00000001;
+pub const CODE_END: u32 = 0x0000DFFF;
 pub const BSS: u32 = 0x0000E000;
+pub const BSS_END: u32 = 0x0000EFFF;
 pub const REGISTERS: u32 = 0x0000F000;//til 0x0000FFFF
+pub const REGISTERS_END: u32 = 0x0000FFFF;//til 0x0000FFFF
 pub const MEMORY: u32 = 0x00010000;
+pub const MEMORY_END: u32 = 0x0007FFFF;
 pub const STACK: u32 = 0x00080000;
 
 
@@ -327,7 +331,7 @@ impl CPU {
             // JMP, add if not exist addr(pc-rel, or static) to label-list
             Op::JMP => {
                 let d = " ".to_string();
-                let mut s;
+                let s;
                 if self.instruction.args & 0x02 == 0 { s = format!("CONST_{:08X}",self.instruction.arg[1]); }
                 else { s = format!("REF_{:08X}",self.instruction.arg[1]); }
 
@@ -360,7 +364,7 @@ impl CPU {
                         self.instruction.arg_index[i] = CPU::add_new_item(&mut self.data, CPU::new_item(s, d, v) );
                     }
                     else {
-                        let mut s;
+                        let s;
                         if i == 0 {
                             s = format!("REF_[{:08X}]",self.instruction.arg[i]);
                         } else {
@@ -718,10 +722,10 @@ impl CPU {
             Some(lbl) => { format!("{}", lbl.tag).to_string() }
             None => { 
                 match adr {
-                    0...BSS => {format!("LBL_{:08X}",adr).to_string()},
-                    BSS...REGISTERS => {format!("BSS_{:08X}",adr).to_string()},
-                    REGISTERS...MEMORY => {format!("REG_{:08X}",adr).to_string()},
-                    MEMORY...STACK => {format!("VAR_{:08X}",adr).to_string()},
+                    0..=CODE_END => {format!("LBL_{:08X}",adr).to_string()},
+                    BSS..=BSS_END => {format!("BSS_{:08X}",adr).to_string()},
+                    REGISTERS..=REGISTERS_END => {format!("REG_{:08X}",adr).to_string()},
+                    MEMORY..=MEMORY_END => {format!("VAR_{:08X}",adr).to_string()},
                     _ => {format!("adr_{:08X}",adr).to_string()},
                 }
             }

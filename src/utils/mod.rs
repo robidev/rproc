@@ -1,5 +1,4 @@
 // helper utility functions and macros
-use std::error::Error;
 use std::io::prelude::*;
 use std::fs::File;
 use std::io::SeekFrom;
@@ -20,7 +19,7 @@ pub fn open_file(filename: &str, offset: u64) -> Vec<u8> {
     let path = Path::new(&filename);
     
     let mut file = match File::open(&path) {
-        Err(why) => panic!("Couldn't open {}: {}", path.display(), Error::description(&why)),
+        Err(why) => panic!("Couldn't open {}: {}", path.display(), why),
         Ok(file) => file,
     };
 
@@ -30,7 +29,7 @@ pub fn open_file(filename: &str, offset: u64) -> Vec<u8> {
     let result = file.read_to_end(&mut file_data);
     
     match result {
-        Err(why)   => panic!("Error reading file: {}", Error::description(&why)),
+        Err(why)   => panic!("Error reading file: {}", why),
         Ok(_) => {},//println!("Read {}: {} bytes", path.display(), result),
     };    
 

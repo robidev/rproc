@@ -76,16 +76,16 @@ impl Memory {
     }
     
     // returns memory bank for current latch setting and address
-    pub fn get_bank(&mut self, addr: u32) -> (&mut MemBank) {
+    pub fn get_bank(&mut self, addr: u32) -> &mut MemBank {
         const RAMSIZE: u32 = (MEM_SIZE-1) as u32;
         match addr {
-            0x0000...RAMSIZE => &mut self.ram,
+            0x0000..=RAMSIZE => &mut self.ram,
             _                => &mut self.void,
         }
     }
 
     // returns specific modifiable memory bank
-    pub fn get_ram_bank(&mut self, bank_type: MemType) -> (&mut MemBank) {
+    pub fn get_ram_bank(&mut self, bank_type: MemType) -> &mut MemBank {
         match bank_type {
             MemType::Ram => &mut self.ram,
             _            => &mut self.void,
